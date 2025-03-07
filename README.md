@@ -1,7 +1,13 @@
 # Local_Transformer
 ## sement_signal.py
 
-Input: a signal with the shape of `(num_channels, num_points)`
+Input: 
+signal (np.array): EEG signal of shape `(num_channels, num_points)`.
+seg_length (int): Desired segment length.
+
+
+
+
 
 
 ```python 

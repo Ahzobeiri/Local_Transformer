@@ -1,5 +1,5 @@
 # Local_Transformer
-## sement_signal.py
+## segment_signal
 
 **Input:**
 
@@ -9,10 +9,15 @@
 
 **Output:**
 
-*np.array:* Array of segments with shape `(num_segments, 2, seg_length)`
+*np.array:* Array of segments with shape `(num_segments, num_channels, seg_length)`
 
 
+## train_challenge_model_nn
 
-```python 
-train_challenge_model(data_folder, model_folder, verbose)
+**Potential Checks**
+
+```python
+signals_list = [] 
+outcomes_list = []
+cpcs = list()  # It should be added
 ```

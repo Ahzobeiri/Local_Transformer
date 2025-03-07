@@ -17,7 +17,17 @@
 **Potential Checks**
 
 ```python
-signals_list = [] 
-outcomes_list = []
-cpcs = list()  # It should be added
+    signals_list = [] 
+    outcomes_list = []
+    cpcs = list()  # It should be added
+
+    # For each patient, extract EEG signal, segment it, and assign the same outcome to all segments.
+    for i, patient_id in enumerate(patient_ids):
+        if verbose >= 2:
+            print(f"Processing patient {i + 1}/{num_patients}...")
+
+        # Get the EEG signal (assumed to have shape (2, L)).
+        signal = get_eeg(data_folder, patient_id)
+        if signal is None:
+            continue
 ```

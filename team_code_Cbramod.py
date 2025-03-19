@@ -159,7 +159,32 @@ def get_eeg(data_folder, patient_id):
     recording_ids = find_recording_files(data_folder, patient_id)
 
     # Specify the EEG channels of interest.
-    eeg_channels = ['F3', 'P3', 'F4', 'P4']
+    # eeg_channels = ['F3', 'P3', 'F4', 'P4']
+    bipolar_montage = [
+    ('Fp1', 'F7'),    # Fp1-F7
+    ('F7', 'T3'),     # F7-T3 (or F7-T7)
+    ('T3', 'T5'),     # T3-T5 (or T7-P7)
+    ('T5', 'O1'),     # T5-O1 (or P7-O1)
+    ('Fp2', 'F8'),    # Fp2-F8
+    ('F8', 'T4'),     # F8-T4 (or F8-T8)
+    ('T4', 'T6'),     # T4-T6 (or T8-P8)
+    ('T6', 'O2'),     # T6-O2 (or P8-O2)
+    ('Fp1', 'F3'),    # Fp1-F3
+    ('F3', 'C3'),     # F3-C3
+    ('C3', 'P3'),     # C3-P3
+    ('P3', 'O1'),     # P3-O1
+    ('Fp2', 'F4'),    # Fp2-F4
+    ('F4', 'C4'),     # F4-C4
+    ('C4', 'P4'),     # C4-P4
+    ('P4', 'O2'),     # P4-O2
+    ('Fz', 'Cz'),     # Fz-Cz
+    ('Cz', 'Pz')      # Cz-Pz
+    ]
+    
+    
+    # Define all unique electrodes needed for the montage
+    eeg_channels = list({ch for pair in bipolar_montage for ch in pair})  # Auto-extract unique electrodes
+    
     group = 'EEG'
 
     # Check if there are any recordings available.
@@ -175,15 +200,17 @@ def get_eeg(data_folder, patient_id):
 
             # Ensure all required EEG channels are available.
             if all(channel in channels for channel in eeg_channels):
+                data, channels = expand_channels(data, channels, eeg_channels)
                 data, channels = reduce_channels(data, channels, eeg_channels)
                 data, sampling_frequency = preprocess_data(data, sampling_frequency, utility_frequency)
-
-                # Convert to bipolar montage: F3-P3 and F4-P4.
-                # Assumes channels are ordered as F3, P3, F4, P4 after reduction.
+                
+                
+                channel_indices = {channel: idx for idx, channel in enumerate(channels)}
                 signal = np.array([
-                    data[0, :] - data[1, :],
-                    data[2, :] - data[3, :]
+                    data[channel_indices[ch1], :] - data[channel_indices[ch2], :]
+                    for ch1, ch2 in bipolar_montage
                 ])
+                
             else:
                 signal = None
         else:
@@ -227,16 +254,6 @@ def preprocess_data(data, sampling_frequency, utility_frequency):
         data = 0 * data
 
     return data, resampling_frequency
-
-
-
-
-
-
-
-
-
-
 
 
 

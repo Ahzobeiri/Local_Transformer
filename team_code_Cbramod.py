@@ -12,8 +12,6 @@
 from helper_code import *
 import numpy as np, os, sys
 import mne
-from sklearn.impute import SimpleImputer
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 import joblib
 
 
@@ -57,30 +55,9 @@ def segment_signal(signal, seg_length=8192):
     return np.array(segments)  # shape: (num_segments, 2, seg_length)
 
 
-# Example neural network architecture.
-class EEGNet(nn.Module):
-    def __init__(self):
-        super(EEGNet, self).__init__()
-        # The input shape is (batch, channels=2, 1, 8192)
-        self.conv1 = nn.Conv2d(in_channels=2, out_channels=16, kernel_size=(1, 64), stride=(1, 2))
-        self.relu = nn.ReLU()
-        self.pool = nn.MaxPool2d(kernel_size=(1, 8))
-        # Use adaptive pooling to reduce spatial dimensions to 1x1 regardless of input size.
-        self.adapt_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(16, 1)  # Output a single value (e.g., regression output)
-
-    def forward(self, x):
-        x = self.conv1(x)  # -> (batch, 16, 1, L')
-        x = self.relu(x)
-        x = self.pool(x)
-        x = self.adapt_pool(x)  # -> (batch, 16, 1, 1)
-        x = x.view(x.size(0), -1)  # Flatten -> (batch, 16)
-        x = self.fc(x)  # -> (batch, 1)
-        return x
-
 
 # New training function that uses a neural network and segments each EEG signal.
-def train_challenge_model_nn(data_folder, model_folder, verbose, device=None):
+def train_challenge_model(data_folder, model_folder, verbose, device=None):
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -159,6 +136,74 @@ def train_challenge_model_nn(data_folder, model_folder, verbose, device=None):
     torch.save(model.state_dict(), os.path.join(model_folder, "eeg_model.pt"))
     if verbose >= 1:
         print("Training complete and model saved.")
+
+
+
+def get_eeg(data_folder, patient_id):
+    """
+    Load and process the EEG signal for a given patient.
+
+    Parameters:
+      data_folder (str): The folder containing patient data.
+      patient_id (str): The unique identifier for the patient.
+
+    Returns:
+      np.array or None: The preprocessed EEG signal in bipolar montage
+                        or None if the required data is not available.
+    """
+    # Find recording files for the patient.
+    recording_ids = find_recording_files(data_folder, patient_id)
+
+    # Specify the EEG channels of interest.
+    eeg_channels = ['F3', 'P3', 'F4', 'P4']
+    group = 'EEG'
+
+    # Check if there are any recordings available.
+    if len(recording_ids) > 0:
+        # Use the most recent recording.
+        recording_id = recording_ids[-1]
+        recording_location = os.path.join(data_folder, patient_id, f'{recording_id}_{group}')
+
+        # Check if the header file exists.
+        if os.path.exists(recording_location + '.hea'):
+            data, channels, sampling_frequency = load_recording_data(recording_location)
+            utility_frequency = get_utility_frequency(recording_location + '.hea')
+
+            # Ensure all required EEG channels are available.
+            if all(channel in channels for channel in eeg_channels):
+                data, channels = reduce_channels(data, channels, eeg_channels)
+                data, sampling_frequency = preprocess_data(data, sampling_frequency, utility_frequency)
+
+                # Convert to bipolar montage: F3-P3 and F4-P4.
+                # Assumes channels are ordered as F3, P3, F4, P4 after reduction.
+                signal = np.array([
+                    data[0, :] - data[1, :],
+                    data[2, :] - data[3, :]
+                ])
+            else:
+                signal = None
+        else:
+            signal = None
+    else:
+        signal = None
+
+    return signal
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def train_challenge_model(data_folder, model_folder, verbose):
@@ -442,54 +487,3 @@ def get_ecg_features(data):
     features = np.array((mean, std)).T
 
     return features
-
-
-def get_eeg(data_folder, patient_id):
-    """
-    Load and process the EEG signal for a given patient.
-
-    Parameters:
-      data_folder (str): The folder containing patient data.
-      patient_id (str): The unique identifier for the patient.
-
-    Returns:
-      np.array or None: The preprocessed EEG signal in bipolar montage (F3-P3 and F4-P4)
-                        or None if the required data is not available.
-    """
-    # Find recording files for the patient.
-    recording_ids = find_recording_files(data_folder, patient_id)
-
-    # Specify the EEG channels of interest.
-    eeg_channels = ['F3', 'P3', 'F4', 'P4']
-    group = 'EEG'
-
-    # Check if there are any recordings available.
-    if len(recording_ids) > 0:
-        # Use the most recent recording.
-        recording_id = recording_ids[-1]
-        recording_location = os.path.join(data_folder, patient_id, f'{recording_id}_{group}')
-
-        # Check if the header file exists.
-        if os.path.exists(recording_location + '.hea'):
-            data, channels, sampling_frequency = load_recording_data(recording_location)
-            utility_frequency = get_utility_frequency(recording_location + '.hea')
-
-            # Ensure all required EEG channels are available.
-            if all(channel in channels for channel in eeg_channels):
-                data, channels = reduce_channels(data, channels, eeg_channels)
-                data, sampling_frequency = preprocess_data(data, sampling_frequency, utility_frequency)
-
-                # Convert to bipolar montage: F3-P3 and F4-P4.
-                # Assumes channels are ordered as F3, P3, F4, P4 after reduction.
-                signal = np.array([
-                    data[0, :] - data[1, :],
-                    data[2, :] - data[3, :]
-                ])
-            else:
-                signal = None
-        else:
-            signal = None
-    else:
-        signal = None
-
-    return signal

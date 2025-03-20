@@ -210,6 +210,58 @@ def get_eeg(data_folder, patient_id):
                     data[channel_indices[ch1], :] - data[channel_indices[ch2], :]
                     for ch1, ch2 in bipolar_montage
                 ])
+
+                
+                ######################################################
+                # NEW: Epoch Segmentation (Added Here)
+                #####################################################
+                # Transpose to (samples, channels) format
+                signal = signal.T  # Now shape (num_samples, num_channels=18)
+
+                total_samples = signal.shape[0]
+                a = total_samples % (30 * 128)
+
+                # Check minmum lenght (2 minutes)
+                if total_samples < 120 * 128:
+                    return
+
+
+                trimmed_data = signal[60 * 128 : -(a + 60 * 128), :]
+                # print(trimmed_data.shape)
+
+        
+                # Reshape into epochs
+                num_epochs = trimmed_data.shape[0] // (30 * 128)
+                segmented = trimmed_data.reshape(num_epochs, 30, 128, 18)
+                trim_samples = 60 * 128
+                remaining = signal.shape[0] - 2 * trim_samples
+        segment_samples = 30 * 128
+        
+        # Calculate how much to trim from end
+        excess = remaining % segment_samples
+        if remaining <= excess:  # Not enough data after initial trim
+            return None
+        
+        # Apply trimming
+        trimmed_data = signal[trim_samples : -(trim_samples + excess)]
+        
+        # Reshape into epochs
+        num_epochs = trimmed_data.shape[0] // segment_samples
+        segmented = trimmed_data.reshape(num_epochs, segment_samples, -1)
+        
+        # Final shape: (num_epochs, channels, time_steps, samples_per_second)
+        segmented = segmented.transpose(0, 2, 1)  # (epochs, channels, samples)
+        segmented = segmented.reshape(num_epochs, -1, 30, 128)
+        
+        # SCALE HERE (after segmentation)
+        min_val = np.min(segmented)
+        max_val = np.max(segmented)
+        if min_val != max_val:
+            segmented = 2 * (segmented - min_val) / (max_val - min_val) - 1
+
+            
+
+            
                 
             else:
                 signal = None

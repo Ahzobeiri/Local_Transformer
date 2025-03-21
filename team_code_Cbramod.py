@@ -235,6 +235,7 @@ def get_eeg(data_folder, patient_id):
                 num_epochs = trimmed_data.shape[0] // (30 * 128)
                 segmented = trimmed_data.reshape(num_epochs, 30, 128, 18)
                 segmented = segmented.transpose(0, 3, 1, 2) # Final shape: (num_epochs, channels, time_steps, samples_per_second)
+                print(segmented.shape)
 
                 
                 # SCALE HERE (after segmentation)

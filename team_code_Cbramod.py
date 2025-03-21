@@ -269,6 +269,68 @@ def get_eeg(data_folder, patient_id):
     return signal   ### (These Returns Should be checked!!!!)
 
 
+# This the second get_eeg written by deepseek.
+def get_eeg(data_folder, patient_id):
+    """Process EEG data and return segmented epochs or None"""
+    try:
+        recording_ids = find_recording_files(data_folder, patient_id)
+        if not recording_ids:
+            return None
+
+        # Load most recent recording
+        recording_id = recording_ids[-1]
+        recording_path = os.path.join(data_folder, patient_id, f'{recording_id}_EEG')
+        
+        if not os.path.exists(recording_path + '.hea'):
+            return None
+
+        # Load raw data
+        data, channels, sfreq = load_recording_data(recording_path)
+        utility_freq = get_utility_frequency(recording_path + '.hea')
+
+        # Channel handling
+        if not all(ch in channels for ch in EEG_CHANNELS):
+            return None
+            
+        data, _ = expand_channels(data, channels, EEG_CHANNELS)
+        data, channels = reduce_channels(data, channels, EEG_CHANNELS)
+
+        # Preprocessing
+        data, sfreq = preprocess_data(data, sfreq, utility_freq)
+
+        # Bipolar montage
+        chan_indices = {ch: i for i, ch in enumerate(channels)}
+        signal = np.array([
+            data[chan_indices[ch1]] - data[chan_indices[ch2]]
+            for ch1, ch2 in BIPOLAR_MONTAGE
+        ])
+
+        # Segmentation
+        signal = signal.T  # (samples, channels)
+        total_samples = signal.shape[0]
+        
+        if total_samples < MIN_DURATION:
+            return None
+
+        # Trim edges
+        excess = total_samples % (30 * FS_RESAMPLE)
+        trimmed = signal[TRIM_DURATION : -(TRIM_DURATION + excess)]
+        
+        # Reshape and scale
+        num_epochs = trimmed.shape[0] // (30 * FS_RESAMPLE)
+        segmented = trimmed.reshape(num_epochs, 30, FS_RESAMPLE, -1)
+        segmented = segmented.transpose(0, 3, 1, 2)  # (epochs, ch, time, samples)
+        
+        # Normalize
+        min_val, max_val = np.min(segmented), np.max(segmented)
+        if min_val != max_val:
+            segmented = 2 * (segmented - min_val) / (max_val - min_val) - 1
+            
+        return segmented
+
+    except Exception as e:
+        print(f"Error processing {patient_id}: {str(e)}")
+        return None
 
 
 # Preprocess data.

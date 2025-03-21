@@ -213,7 +213,7 @@ def get_eeg(data_folder, patient_id):
 
                 
                 ######################################################
-                # NEW: Epoch Segmentation (Added Here)
+                # NEW: Epoch Segmentation
                 #####################################################
                 # Transpose to (samples, channels) format
                 signal = signal.T  # Now shape (num_samples, num_channels=18)
@@ -233,44 +233,27 @@ def get_eeg(data_folder, patient_id):
                 # Reshape into epochs
                 num_epochs = trimmed_data.shape[0] // (30 * 128)
                 segmented = trimmed_data.reshape(num_epochs, 30, 128, 18)
-                trim_samples = 60 * 128
-                remaining = signal.shape[0] - 2 * trim_samples
-        segment_samples = 30 * 128
-        
-        # Calculate how much to trim from end
-        excess = remaining % segment_samples
-        if remaining <= excess:  # Not enough data after initial trim
-            return None
-        
-        # Apply trimming
-        trimmed_data = signal[trim_samples : -(trim_samples + excess)]
-        
-        # Reshape into epochs
-        num_epochs = trimmed_data.shape[0] // segment_samples
-        segmented = trimmed_data.reshape(num_epochs, segment_samples, -1)
-        
-        # Final shape: (num_epochs, channels, time_steps, samples_per_second)
-        segmented = segmented.transpose(0, 2, 1)  # (epochs, channels, samples)
-        segmented = segmented.reshape(num_epochs, -1, 30, 128)
-        
-        # SCALE HERE (after segmentation)
-        min_val = np.min(segmented)
-        max_val = np.max(segmented)
-        if min_val != max_val:
-            segmented = 2 * (segmented - min_val) / (max_val - min_val) - 1
+                segmented = segmented.transpose(0, 3, 1, 2) # Final shape: (num_epochs, channels, time_steps, samples_per_second)
 
-            
-
-            
+                
+                # SCALE HERE (after segmentation)
+                min_val = np.min(segmented)
+                max_val = np.max(segmented)
+                if min_val != max_val:
+                segmented = 2 * (segmented - min_val) / (max_val - min_val) - 1
+                
+                
+                
+                return segmented
                 
             else:
-                signal = None
+                return None
         else:
-            signal = None
+            return None
     else:
-        signal = None
+        return None
 
-    return signal
+    return signal   ### (These Returns Should be checked!!!!)
 
 
 
@@ -306,79 +289,6 @@ def preprocess_data(data, sampling_frequency, utility_frequency):
         data = 0 * data
 
     return data, resampling_frequency
-
-
-
-
-
-def train_challenge_model(data_folder, model_folder, verbose):
-    # Find data files.
-    if verbose >= 1:
-        print('Finding the Challenge data...')
-
-    patient_ids = find_data_folders(data_folder)
-    num_patients = len(patient_ids)
-
-    if num_patients == 0:
-        raise FileNotFoundError('No data was provided.')
-
-    # Create a folder for the model if it does not already exist.
-    os.makedirs(model_folder, exist_ok=True)
-
-    # Extract the features and labels.
-    if verbose >= 1:
-        print('Extracting features and labels from the Challenge data...')
-
-    features = list()
-    signals = list()
-    outcomes = list()
-    cpcs = list()
-
-    for i in range(num_patients):
-        if verbose >= 2:
-            print('    {}/{}...'.format(i + 1, num_patients))
-
-        # current_features = get_features(data_folder, patient_ids[i])
-        # features.append(current_features)
-        current_signal = get_eeg(data_folder, patient_ids[i])  # (2, 404096 or ...)
-        signals.append(current_signal)
-
-        # Extract labels.
-        patient_metadata = load_challenge_data(data_folder, patient_ids[i])
-        current_outcome = get_outcome(patient_metadata)
-        outcomes.append(current_outcome)
-        current_cpc = get_cpc(patient_metadata)
-        cpcs.append(current_cpc)
-
-    features = np.vstack(features)
-    outcomes = np.vstack(outcomes)
-    cpcs = np.vstack(cpcs)
-
-    # Train the models.
-    if verbose >= 1:
-        print('Training the Challenge model on the Challenge data...')
-
-    # Define parameters for random forest classifier and regressor.
-    n_estimators = 123  # Number of trees in the forest.
-    max_leaf_nodes = 456  # Maximum number of leaf nodes in each tree.
-    random_state = 789  # Random state; set for reproducibility.
-
-    # Impute any missing features; use the mean value by default.
-    imputer = SimpleImputer().fit(features)
-
-    # Train the models.
-    features = imputer.transform(features)
-    outcome_model = RandomForestClassifier(
-        n_estimators=n_estimators, max_leaf_nodes=max_leaf_nodes, random_state=random_state).fit(features,
-                                                                                                 outcomes.ravel())
-    cpc_model = RandomForestRegressor(
-        n_estimators=n_estimators, max_leaf_nodes=max_leaf_nodes, random_state=random_state).fit(features, cpcs.ravel())
-
-    # Save the models.
-    save_challenge_model(model_folder, imputer, outcome_model, cpc_model)
-
-    if verbose >= 1:
-        print('Done.')
 
 
 # Load your trained models. This function is *required*. You should edit this function to add your code, but do *not* change the

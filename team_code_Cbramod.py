@@ -146,15 +146,12 @@ def train_challenge_model(data_folder, model_folder, verbose, device=None):
 
 def get_eeg(data_folder, patient_id):
     """
-    Load and process the EEG signal for a given patient.
+    Process and return segmented EEG epochs for a given patient.
 
     Parameters:
       data_folder (str): The folder containing patient data.
       patient_id (str): The unique identifier for the patient.
 
-    Returns:
-      np.array or None: The preprocessed EEG signal in bipolar montage
-                        or None if the required data is not available.
     """
     
     # Find recording files for the patient.

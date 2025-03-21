@@ -294,7 +294,8 @@ def preprocess_data(data, sampling_frequency, utility_frequency):
     up = int(round(lcm / sampling_frequency))
     down = int(round(lcm / resampling_frequency))
     data = scipy.signal.resample_poly(data, up, down, axis=1)
-
+    
+'''
     # Scale the data to the interval [-1, 1].
     min_value = np.min(data)
     max_value = np.max(data)
@@ -302,7 +303,7 @@ def preprocess_data(data, sampling_frequency, utility_frequency):
         data = 2.0 / (max_value - min_value) * (data - 0.5 * (min_value + max_value))
     else:
         data = 0 * data
-
+'''
     return data, resampling_frequency
 
 

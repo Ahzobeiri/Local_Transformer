@@ -141,21 +141,30 @@ def train_challenge_model(data_folder, model_folder, verbose, device=None):
     torch.save(model.state_dict(), os.path.join(model_folder, "eeg_model.pt"))
     if verbose >= 1:
         print("Training complete and model saved.")
+def setup_seed(seed):
+    np.random.seed(seed)
+    random.seed(seed)
 
 
+def process_patient(data_folder, patient_id, db, file_key_list):
+    segmented = get_eeg(data_folder, patient_id)
+    if segmented is not None:
+        file_name = f"patient_{patient_id}"
+        for i, sample in enumerate(segmented):
+            sample_key = f'{file_name}_epoch{i}'
+            file_key_list.append(sample_key)
+            with db.begin(write=True) as txn:
+                txn.put(key=sample_key.encode(), value=pickle.dumps(sample.astype(np.float32)))
 
-def get_eeg(data_folder, patient_id):
+
+def get_eeg(data_folder, patient_id, db: lmdb.open, file_key_list: list):
     """
-    Process and return segmented EEG epochs for a given patient.
+    Process and save segmented EEG epochs to LMDB for a given patient.
 
     Parameters:
       data_folder (str): The folder containing patient data.
       patient_id (str): The unique identifier for the patient.
-
     """
-    
-    # Find recording files for the patient.
-    recording_ids = find_recording_files(data_folder, patient_id)
 
     # Specify the EEG channels of interest.
     # eeg_channels = ['F3', 'P3', 'F4', 'P4']
@@ -185,152 +194,95 @@ def get_eeg(data_folder, patient_id):
     eeg_channels = list({ch for pair in bipolar_montage for ch in pair})  # Auto-extract unique electrodes
     
     group = 'EEG'
+    
+    # Find recording files for the patient.
+    recording_ids = find_recording_files(data_folder, patient_id)
 
     # Check if there are any recordings available.
-    if len(recording_ids) > 0:
-        # Use the most recent recording.
-        recording_id = recording_ids[-1]
-        recording_location = os.path.join(data_folder, patient_id, f'{recording_id}_{group}')
+    if len(recording_ids) == 0:
+        return False
+    
+        
+    # Use the most recent recording.
+    recording_id = recording_ids[-1]
+    recording_location = os.path.join(data_folder, patient_id, f'{recording_id}_{group}')
 
-        # Check if the header file exists.
-        if os.path.exists(recording_location + '.hea'):
-            data, channels, sampling_frequency = load_recording_data(recording_location)
-            utility_frequency = get_utility_frequency(recording_location + '.hea')
+    # Check if the header file exists.
+    if not os.path.exists(recording_location + '.hea'):
+        return False
 
-            # Ensure all required EEG channels are available.
-            if all(channel in channels for channel in eeg_channels):
-                data, channels = expand_channels(data, channels, eeg_channels)
-                data, channels = reduce_channels(data, channels, eeg_channels)
-                data, sampling_frequency = preprocess_data(data, sampling_frequency, utility_frequency)
-                
-                
-                channel_indices = {channel: idx for idx, channel in enumerate(channels)}
-                signal = np.array([
+    try:
+        #Load raw data
+        data, channels, sampling_frequency = load_recording_data(recording_location)
+        utility_frequency = get_utility_frequency(recording_location + '.hea')
+        
+        # Ensure all required EEG channels are available.
+        if not all(channel in channels for channel in eeg_channels):
+            return False
+            
+        # Channel Processing
+        data, channels = expand_channels(data, channels, eeg_channels)
+        data, channels = reduce_channels(data, channels, eeg_channels)
+        
+        # Preprocessing
+        data, sampling_frequency = preprocess_data(data, sampling_frequency, utility_frequency)
+        
+        # Bipolar Referencing
+        channel_indices = {channel: idx for idx, channel in enumerate(channels)}
+        signal = np.array([
                     data[channel_indices[ch1], :] - data[channel_indices[ch2], :]
                     for ch1, ch2 in bipolar_montage
-                ])
-
-                
-                ######################################################
-                # NEW: Epoch Segmentation
-                #####################################################
-                # Transpose to (samples, channels) format
-                signal = signal.T  # Now shape (num_samples, num_channels=18)
-
-                total_samples = signal.shape[0]
-                a = total_samples % (30 * 128)
-
-                # Check minmum lenght (2 minutes)
-                if total_samples < 120 * 128:
-                    return
-
-
-                trimmed_data = signal[60 * 128 : -(a + 60 * 128), :]
-                # print(trimmed_data.shape)
-
-        
-                # Reshape into epochs
-                num_epochs = trimmed_data.shape[0] // (30 * 128)
-                segmented = trimmed_data.reshape(num_epochs, 30, 128, 18)
-                segmented = segmented.transpose(0, 3, 1, 2) # Final shape: (num_epochs, channels, time_steps, samples_per_second)
-                print(segmented.shape)
-
-                
-                # SCALE HERE (after segmentation)
-                min_val = np.min(segmented)
-                max_val = np.max(segmented)
-                if min_val != max_val:
-                segmented = 2 * (segmented - min_val) / (max_val - min_val) - 1
-
-                file_name = recording_location.split('/')[-1]
-
-
-
-                for i, sample in enumerate(segmented):
-                    # print(i, sample.shape)
-                    sample_key = f'{file_name}_{i}'
-                    print(sample_key)
-                    file_key_list.append(sample_key)
-                    txn = db.begin(write=True)
-                    txn.put(key=sample_key.encode(), value=pickle.dumps(sample))
-                    txn.commit()
-                
-                
-                
-                return segmented
-                
-            else:
-                return None
-        else:
-            return None
-    else:
-        return None
-
-    return signal   ### (These Returns Should be checked!!!!)
-
-
-# This the second get_eeg written by deepseek.
-def get_eeg(data_folder, patient_id):
-    """Process EEG data and return segmented epochs or None"""
-    try:
-        recording_ids = find_recording_files(data_folder, patient_id)
-        if not recording_ids:
-            return None
-
-        # Load most recent recording
-        recording_id = recording_ids[-1]
-        recording_path = os.path.join(data_folder, patient_id, f'{recording_id}_EEG')
-        
-        if not os.path.exists(recording_path + '.hea'):
-            return None
-
-        # Load raw data
-        data, channels, sfreq = load_recording_data(recording_path)
-        utility_freq = get_utility_frequency(recording_path + '.hea')
-
-        # Channel handling
-        if not all(ch in channels for ch in EEG_CHANNELS):
-            return None
-            
-        data, _ = expand_channels(data, channels, EEG_CHANNELS)
-        data, channels = reduce_channels(data, channels, EEG_CHANNELS)
-
-        # Preprocessing
-        data, sfreq = preprocess_data(data, sfreq, utility_freq)
-
-        # Bipolar montage
-        chan_indices = {ch: i for i, ch in enumerate(channels)}
-        signal = np.array([
-            data[chan_indices[ch1]] - data[chan_indices[ch2]]
-            for ch1, ch2 in BIPOLAR_MONTAGE
         ])
-
-        # Segmentation
-        signal = signal.T  # (samples, channels)
+        
+        
+        ######################################################
+                    # Epoch Segmentation
+        #####################################################
+        # Transpose to (samples, channels) format
+        signal = signal.T  # Now shape (num_samples, num_channels=18)
+        
         total_samples = signal.shape[0]
+        a = total_samples % (30 * 128)
         
-        if total_samples < MIN_DURATION:
-            return None
-
-        # Trim edges
-        excess = total_samples % (30 * FS_RESAMPLE)
-        trimmed = signal[TRIM_DURATION : -(TRIM_DURATION + excess)]
-        
-        # Reshape and scale
-        num_epochs = trimmed.shape[0] // (30 * FS_RESAMPLE)
-        segmented = trimmed.reshape(num_epochs, 30, FS_RESAMPLE, -1)
-        segmented = segmented.transpose(0, 3, 1, 2)  # (epochs, ch, time, samples)
-        
-        # Normalize
-        min_val, max_val = np.min(segmented), np.max(segmented)
-        if min_val != max_val:
-            segmented = 2 * (segmented - min_val) / (max_val - min_val) - 1
+        # Check minmum lenght (2 minutes)
+        if total_samples < 120 * 128:
+            return False
             
-        return segmented
+        trimmed_data = signal[60 * 128 : -(a + 60 * 128), :]
+        # print(trimmed_data.shape)
+        
+        # Reshape into epochs
+        num_epochs = trimmed_data.shape[0] // (30 * 128)
+        segmented = trimmed_data.reshape(num_epochs, 30, 128, 18)
+        segmented = segmented.transpose(0, 3, 1, 2) # Final shape: (num_epochs, channels, time_steps, samples_per_second)
+        print(segmented.shape)
+
+                
+        # Normalize
+        min_val = np.min(segmented)
+        max_val = np.max(segmented)
+        if min_val != max_val:
+        segmented = 2 * (segmented - min_val) / (max_val - min_val) - 1
+
+
+        # Save to LMDB
+        file_name = recording_location.split('/')[-1]
+        for i, sample in enumerate(segmented):
+            # print(i, sample.shape)
+            sample_key = f'{file_name}_epoch{i}'
+            print(sample_key)
+            file_key_list.append(sample_key)
+            txn = db.begin(write=True)
+            txn.put(key=sample_key.encode(), value=pickle.dumps(sample.astype(np.float32)))
+            txn.commit()
+            
+        return True         
 
     except Exception as e:
         print(f"Error processing {patient_id}: {str(e)}")
-        return None
+        return False
+
+
 
 
 # Preprocess data.
@@ -355,15 +307,6 @@ def preprocess_data(data, sampling_frequency, utility_frequency):
     down = int(round(lcm / resampling_frequency))
     data = scipy.signal.resample_poly(data, up, down, axis=1)
     
-'''
-    # Scale the data to the interval [-1, 1].
-    min_value = np.min(data)
-    max_value = np.max(data)
-    if min_value != max_value:
-        data = 2.0 / (max_value - min_value) * (data - 0.5 * (min_value + max_value))
-    else:
-        data = 0 * data
-'''
     return data, resampling_frequency
 
 

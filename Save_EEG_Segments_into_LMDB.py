@@ -1,14 +1,5 @@
 #!/usr/bin/env python
 
-# Edit this script to add your team's code. Some functions are *required*, but you can edit most parts of the required functions,
-# change or remove non-required functions, and add your own functions.
-
-################################################################################
-#
-# Optional libraries, functions, and variables. You can change or remove them.
-#
-################################################################################
-
 from helper_code import *
 import numpy as np, os, sys
 import mne
@@ -25,17 +16,6 @@ import numpy as np
 def setup_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
-
-
-def process_patient(data_folder, patient_id, db, file_key_list):
-    segmented = get_eeg(data_folder, patient_id)
-    if segmented is not None:
-        file_name = f"patient_{patient_id}"
-        for i, sample in enumerate(segmented):
-            sample_key = f'{file_name}_epoch{i}'
-            file_key_list.append(sample_key)
-            with db.begin(write=True) as txn:
-                txn.put(key=sample_key.encode(), value=pickle.dumps(sample.astype(np.float32)))
 
 
 def get_eeg(data_folder, patient_id, db: lmdb.open, file_key_list: list):
@@ -93,7 +73,7 @@ def get_eeg(data_folder, patient_id, db: lmdb.open, file_key_list: list):
         return False
 
     try:
-        #Load raw data
+        # Load raw data
         data, channels, sampling_frequency = load_recording_data(recording_location)
         utility_frequency = get_utility_frequency(recording_location + '.hea')
         
@@ -189,3 +169,26 @@ def preprocess_data(data, sampling_frequency, utility_frequency):
     data = scipy.signal.resample_poly(data, up, down, axis=1)
     
     return data, resampling_frequency
+
+
+if __name__ == '__main__':
+    setup_seed(42)
+    data_folder = 'path/to/data'
+    output_db = 'path/to/database.lmdb'
+    
+    # Initialize LMDB
+    env = lmdb.open(output_db, map_size=1099511627776)  # 1TB
+    file_keys = []
+
+    # Process all patients
+    patient_ids = find_data_folders(data_folder)
+    
+    for patient_id in tqdm(patient_ids):
+        success = get_eeg(data_folder, patient_id, env, file_keys)
+        if not success:
+            print(f"Skipped patient {patient_id}")
+
+    # Save final key list
+    with env.begin(write=True) as txn:
+        txn.put(b'__keys__', pickle.dumps(file_keys))
+    env.close()

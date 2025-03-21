@@ -155,6 +155,7 @@ def get_eeg(data_folder, patient_id):
       np.array or None: The preprocessed EEG signal in bipolar montage
                         or None if the required data is not available.
     """
+    
     # Find recording files for the patient.
     recording_ids = find_recording_files(data_folder, patient_id)
 
@@ -241,6 +242,19 @@ def get_eeg(data_folder, patient_id):
                 max_val = np.max(segmented)
                 if min_val != max_val:
                 segmented = 2 * (segmented - min_val) / (max_val - min_val) - 1
+
+                file_name = recording_location.split('/')[-1]
+
+
+
+                for i, sample in enumerate(segmented):
+                    # print(i, sample.shape)
+                    sample_key = f'{file_name}_{i}'
+                    print(sample_key)
+                    file_key_list.append(sample_key)
+                    txn = db.begin(write=True)
+                    txn.put(key=sample_key.encode(), value=pickle.dumps(sample))
+                    txn.commit()
                 
                 
                 

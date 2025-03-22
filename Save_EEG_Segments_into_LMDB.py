@@ -82,7 +82,7 @@ def get_eeg(data_folder, patient_id, db: lmdb.open, file_key_list: list):
             return False
             
         # Channel Processing
-        data, channels = expand_channels(data, channels, eeg_channels)
+        data = expand_channels(data, channels, eeg_channels)
         data, channels = reduce_channels(data, channels, eeg_channels)
         
         # Preprocessing

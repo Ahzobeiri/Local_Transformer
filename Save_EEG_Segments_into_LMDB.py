@@ -123,21 +123,19 @@ def get_eeg(data_folder, patient_id, db: lmdb.open, file_key_list: list):
         min_val = np.min(segmented)
         max_val = np.max(segmented)
         if min_val != max_val:
-        segmented = 2 * (segmented - min_val) / (max_val - min_val) - 1
-
-
-        # Save to LMDB
-        file_name = recording_location.split('/')[-1]
-        for i, sample in enumerate(segmented):
-            # print(i, sample.shape)
-            sample_key = f'{file_name}_epoch{i}'
-            print(sample_key)
-            file_key_list.append(sample_key)
-            txn = db.begin(write=True)
-            txn.put(key=sample_key.encode(), value=pickle.dumps(sample.astype(np.float32)))
-            txn.commit()
-            
-        return True         
+            segmented = 2 * (segmented - min_val) / (max_val - min_val) - 1
+            # Save to LMDB
+            file_name = recording_location.split('/')[-1]
+            for i, sample in enumerate(segmented):
+                # print(i, sample.shape)
+                sample_key = f'{file_name}_epoch{i}'
+                print(sample_key)
+                file_key_list.append(sample_key)
+                txn = db.begin(write=True)
+                txn.put(key=sample_key.encode(), value=pickle.dumps(sample.astype(np.float32)))
+                txn.commit()
+                
+            return True         
 
     except Exception as e:
         print(f"Error processing {patient_id}: {str(e)}")

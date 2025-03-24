@@ -52,7 +52,11 @@ def get_eeg(data_folder, patient_id, db: lmdb.open, file_key_list: list):
     
     
     # Define all unique electrodes needed for the montage
-    eeg_channels = list({ch for pair in bipolar_montage for ch in pair})  # Auto-extract unique electrodes
+    eeg_channels = ['Fp1', 'F7', 'T3', 'T5', 'O1'
+                   'Fp2', 'F8', 'T4', 'T6', 'O2',
+                   'F3', 'C3', 'P3', 'F4', 'C4',
+                   'P4', 'Fz', 'Cz', 'Pz'
+                   ]
     
     group = 'EEG'
     
@@ -83,7 +87,8 @@ def get_eeg(data_folder, patient_id, db: lmdb.open, file_key_list: list):
             
         # Channel Processing
         data = expand_channels(data, channels, eeg_channels)
-        data, channels = reduce_channels(data, channels, eeg_channels)
+        # data, channels = reduce_channels(data, channels, eeg_channels)
+        channels = eeg_channels
         
         # Preprocessing
         data, sampling_frequency = preprocess_data(data, sampling_frequency, utility_frequency)

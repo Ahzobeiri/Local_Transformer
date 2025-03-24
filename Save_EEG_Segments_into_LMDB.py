@@ -58,6 +58,7 @@ def get_eeg(data_folder, patient_id, db: lmdb.open, file_key_list: list):
                    'P4', 'Fz', 'Cz', 'Pz'
                    ]
     
+    
     group = 'EEG'
     
     # Find recording files for the patient.

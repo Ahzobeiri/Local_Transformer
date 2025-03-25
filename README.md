@@ -128,3 +128,13 @@ This class implements one layer of the Transformer encoder with two main sub-blo
 *`norm_first`*: determines if layer normalization is applied before (pre-norm) the sub-blocks.
 
 *`bias`*, *`device`*, and *`dtype`*: standard parameters for linear layers and multihead attention.
+
+
+**MultiheadAttention Setup:**
+The layer defines two separate attention modules:
+
+*`self.self_attn_s`*: operates on one half of the input features.
+
+*`self.self_attn_t`*: operates on the other half.
+
+The division is made by splitting the last dimension (feature dimension) into two halves (i.e. *`d_model`* // 2). The number of heads is also halved accordingly (*`nhead`* // 2).

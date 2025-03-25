@@ -98,3 +98,6 @@ After all layers, if a normalization layer (norm) is provided, it is applied to 
 **Output:**
 
 The final transformed tensor.
+
+
+## TransformerEncoderLayer Class

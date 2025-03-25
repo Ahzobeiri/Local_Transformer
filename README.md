@@ -70,4 +70,22 @@ def _get_clones(module, N):
 
 It calls `_get_clones` to create a list (`ModuleList`) of identical encoder layers. This function takes in a PyTorch module and an integer `N`, and returns a container (specifically, an `nn.ModuleList`) filled with `N` independent copies of the provided module. The function uses `copy.deepcopy(module)` inside a list comprehension. The deepcopy operation ensures that all parameters and internal states of the module are copied recursively. This means that each clone is a completely independent instance; changes to one clone won’t affect the others. The comment `# FIXME: copy.deepcopy() is not defined on nn.module` suggests that there might be concerns or limitations with using `copy.deepcopy()` directly on PyTorch modules in some contexts. Despite the comment, the current implementation uses it, likely because it works for the intended use case. The comment might be a reminder to revisit this approach or to handle specific edge cases where `deepcopy` might fail.
 
+### Forward Method (`def forward`):
 
+**Input:**
+
+*`src`*: the input tensor
+
+*`mask`* and *`src_key_padding_mask`*: optional masks for attention.
+
+*`is_causal`*: an optional flag indicating if the mask is causal.
+
+Processing:
+
+The input src is passed sequentially through each encoder layer (using a simple loop over self.layers).
+
+After all layers, if a normalization layer (norm) is provided, it is applied to the output.
+
+Output:
+
+The final transformed tensor.

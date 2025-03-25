@@ -54,6 +54,10 @@ This class defines a stack of encoder layers (stacks multiple `TransformerEncode
 
 ```python
 self.layers = _get_clones(encoder_layer, num_layers)
+
+def _get_clones(module, N):
+    # FIXME: copy.deepcopy() is not defined on nn.module
+    return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
 ```
 
 It calls `_get_clones` to create a list (`ModuleList`) of identical encoder layers.

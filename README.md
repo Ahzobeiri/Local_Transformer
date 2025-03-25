@@ -42,10 +42,10 @@ This class defines a stack of encoder layers (stacks multiple `TransformerEncode
 
 **Parameters:**
 
-*encoder_layer*: a single encoder layer module instance.
+*`encoder_layer`*: a single encoder layer module instance.
 
-*num_layers*: number of times the encoder layer should be cloned (stacked).
+*`num_layers`*: number of times the encoder layer should be cloned (stacked).
 
-*norm*: an optional normalization layer (e.g., `LayerNorm`) applied after all layers.
+*`norm`*: an optional normalization layer (e.g., `LayerNorm`) applied after all layers.
 
-*enable_nested_tensor* and *mask_check*: parameters that responsible for tensor handling and mask validation.
+*`enable_nested_tensor`* and *mask_check*: parameters that responsible for tensor handling and mask validation.

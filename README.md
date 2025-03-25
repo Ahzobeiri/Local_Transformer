@@ -36,3 +36,4 @@
 # Criss_cross_transformer
 
 ## TransformerEncoder Class
+This class defines a stack of encoder layers. It is responsible for sequentially applying multiple encoder layers to an input.

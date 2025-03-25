@@ -106,3 +106,25 @@ This class implements one layer of the Transformer encoder with two main sub-blo
 **Self-Attention Block** – to let the model focus on different parts of the input.
 
 **Feed-Forward Block** – a two-layer MLP to further transform the data.
+
+### Constructor (`__init__`):
+
+**Parameters:**
+
+*`d_model`*: dimension of the model (feature size).
+
+*`nhead`*: number of attention heads.
+
+*`dim_feedforward`*: size of the hidden layer in the feed-forward network.
+
+*`dropout`*: dropout rate used to prevent overfitting.
+
+*`activation`*: the activation function; can be provided as a string (e.g., *`"relu"`* or *`"gelu"`*) or a callable.
+
+*`layer_norm_eps`*: epsilon for numerical stability in layer normalization.
+
+*`batch_first`*: flag indicating whether batch dimension comes first.
+
+*`norm_first`*: determines if layer normalization is applied before (pre-norm) the sub-blocks.
+
+*`bias`*, *`device`*, and *`dtype`*: standard parameters for linear layers and multihead attention.

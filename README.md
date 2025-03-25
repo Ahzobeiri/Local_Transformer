@@ -60,7 +60,7 @@ def _get_clones(module, N):
     return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
 ```
 
-It calls `_get_clones` to create a list (`ModuleList`) of identical encoder layers.
+It calls `_get_clones` to create a list (`ModuleList`) of identical encoder layers. This function takes in a PyTorch module and an integer `N`, and returns a container (specifically, an `nn.ModuleList`) filled with `N` independent copies of the provided module. The function uses `copy.deepcopy(module)` inside a list comprehension. The deepcopy operation ensures that all parameters and internal states of the module are copied recursively. This means that each clone is a completely independent instance; changes to one clone won’t affect the others.
 
 
 It logs API usage (a typical internal detail for tracking module instantiation in PyTorch).

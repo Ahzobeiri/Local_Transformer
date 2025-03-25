@@ -101,3 +101,8 @@ The final transformed tensor.
 
 
 ## TransformerEncoderLayer Class
+This class implements one layer of the Transformer encoder with two main sub-blocks:
+
+**Self-Attention Block** – to let the model focus on different parts of the input.
+
+**Feed-Forward Block** – a two-layer MLP to further transform the data.

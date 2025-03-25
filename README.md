@@ -38,7 +38,7 @@
 ## TransformerEncoder Class
 This class defines a stack of encoder layers (stacks multiple `TransformerEncoderLayer` instances.). It is responsible for sequentially applying multiple encoder layers to an input.
 
-### Constructor (__init__):
+### Constructor (`__init__`):
 
 **Parameters:**
 

@@ -80,12 +80,21 @@ It calls `_get_clones` to create a list (`ModuleList`) of identical encoder laye
 
 *`is_causal`*: an optional flag indicating if the mask is causal.
 
-Processing:
+**Processing:**
 
-The input src is passed sequentially through each encoder layer (using a simple loop over self.layers).
+```python
+output = src
+for mod in self.layers:
+    output = mod(output, src_mask=mask)
+if self.norm is not None:
+    output = self.norm(output)
+return output
+```
+
+The input `src` is passed sequentially through each encoder layer (using a simple loop over self.layers).
 
 After all layers, if a normalization layer (norm) is provided, it is applied to the output.
 
-Output:
+**Output:**
 
 The final transformed tensor.

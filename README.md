@@ -144,14 +144,14 @@ The division is made by splitting the last dimension (feature dimension) into tw
 
 Two linear layers (*`linear1`* and *`linear2`*) with a dropout in between, implementing a standard MLP block.
 
-Normalization and Dropout Layers:
+**Normalization and Dropout Layers:**
 
 Two layer normalization layers (*`norm1`* and *`norm2`*) are defined.
 
 Additional dropout layers (*`dropout1*` and *`dropout2*`) are used after each sub-block.
 
-Activation Function Handling:
+**Activation Function Handling:**
 
-If the activation is provided as a string, _get_activation_fn converts it to the corresponding function.
+If the activation is provided as a string, *`_get_activation_fn`* converts it to the corresponding function.
 
-There is logic to mark whether the activation is either ReLU or GELU, which might be used later (e.g. for TorchScript compatibility).
+There is logic to mark whether the activation is either ReLU or GELU.

@@ -183,3 +183,7 @@ This function defines the computation flow of a Transformer encoder layer. It pr
 *`src_key_padding_mask: Optional[Tensor]`* → A mask that marks padded tokens, preventing attention from considering them.
 
 *`is_causal: bool = False`* → Indicates whether a causal mask should be applied (for decoder-like behavior, used for autoregressive models like GPT).
+
+**Step-by-Step Execution**
+
+- Initialization

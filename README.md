@@ -176,10 +176,10 @@ This function defines the computation flow of a Transformer encoder layer. It pr
 
 **Inputs:**
 
-*`src: Tensor*` → Input tensor (sequence of feature embeddings).
+*`src: Tensor`* → Input tensor (sequence of feature embeddings).
 
-*`src_mask: Optional[Tensor]*` → An optional attention mask to control which elements can attend to each other (e.g., causal masking in autoregressive tasks).
+*`src_mask: Optional[Tensor]`* → An optional attention mask to control which elements can attend to each other (e.g., causal masking in autoregressive tasks).
 
-*`src_key_padding_mask: Optional[Tensor]*` → A mask that marks padded tokens, preventing attention from considering them.
+*`src_key_padding_mask: Optional[Tensor]`* → A mask that marks padded tokens, preventing attention from considering them.
 
-*`is_causal: bool = False*` → Indicates whether a causal mask should be applied (for decoder-like behavior, used for autoregressive models like GPT).
+*`is_causal: bool = False`* → Indicates whether a causal mask should be applied (for decoder-like behavior, used for autoregressive models like GPT).

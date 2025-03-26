@@ -171,3 +171,5 @@ def forward(
     x = x + self._ff_block(self.norm2(x))
     return x
 ```
+
+This function defines the computation flow of a Transformer encoder layer. It processes an input tensor (`src`) using **self-attention** and a **feedforward network**, applying **residual connections** and **layer normalization** at each step.

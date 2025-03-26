@@ -231,7 +231,5 @@ Linear projection → Activation (e.g., `ReLU`/`GELU`) → Dropout → Linear pr
 
 Expands features to dim_feedforward and contracts back to `d_model`.
 
-3- Residual Connection (`x + ...`):
-
-Adds the residual from the previous step to the feedforward output.
+3- Residual Connection (`x + ...`): Adds the residual from the previous step to the feedforward output.
 

@@ -200,7 +200,7 @@ Assign the input tensor `src` to `x`
 x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask, is_causal=is_causal)
 ```
 
-    - Pre-Layer Normalization (self.norm1(x)):
+Pre-Layer Normalization (self.norm1(x)):
 
 Normalizes x using nn.LayerNorm to stabilize training.
 

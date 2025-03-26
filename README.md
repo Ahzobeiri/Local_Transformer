@@ -194,7 +194,7 @@ x = src
 
 Assign the input tensor `src` to `x`
 
-- **Self-Attention Block (with Residual Connection)**
+- **Step 2: Self-Attention Block (with Residual Connection)**
   
 ```python
 x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask, is_causal=is_causal)
@@ -217,3 +217,21 @@ x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask, is_causal=
 - Adds the original `x` (pre-normalization) to the output of the self-attention block.
 
 - Helps mitigate vanishing gradients and preserves information flow.
+
+- **Step 3: Feedforward Block (with Residual Connection)**
+  
+```python
+x = x + self._ff_block(self.norm2(x))
+```
+1- Pre-Layer Normalization (`self.norm2(x)`): Normalizes the output of the previous step.
+
+2- Feedforward Block (`self._ff_block(...)`): Applies a two-layer feedforward network:
+
+Linear projection → Activation (e.g., `ReLU`/`GELU`) → Dropout → Linear projection.
+
+Expands features to dim_feedforward and contracts back to `d_model`.
+
+3- Residual Connection (`x + ...`):
+
+Adds the residual from the previous step to the feedforward output.
+

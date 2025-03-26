@@ -155,3 +155,19 @@ Additional dropout layers (*`dropout1*` and *`dropout2*`) are used after each su
 If the activation is provided as a string, *`_get_activation_fn`* converts it to the corresponding function.
 
 There is logic to mark whether the activation is either ReLU or GELU.
+
+### Forward Method (`def forward`):
+
+```python
+    def forward(
+            self,
+            src: Tensor,
+            src_mask: Optional[Tensor] = None,
+            src_key_padding_mask: Optional[Tensor] = None,
+            is_causal: bool = False) -> Tensor:
+
+        x = src
+        x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask, is_causal=is_causal)
+        x = x + self._ff_block(self.norm2(x))
+        return x
+```

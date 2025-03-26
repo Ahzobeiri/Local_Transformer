@@ -186,4 +186,10 @@ This function defines the computation flow of a Transformer encoder layer. It pr
 
 **Step-by-Step Execution**
 
-- Initialization
+- **Step 1: Initialization**
+  
+```python
+x = src
+```
+
+Assign the input tensor `src` to `x`

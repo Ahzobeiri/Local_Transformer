@@ -202,9 +202,9 @@ x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask, is_causal=
 
 **1- Pre-Layer Normalization (`self.norm1(x)`):**
 
-Normalizes x using nn.LayerNorm to stabilize training.
+- Normalizes x using `nn.LayerNorm` to stabilize training.
 
-This follows the Pre-LN Transformer architecture (normalization before sub-layers).
+- This follows the Pre-LN Transformer architecture (normalization before sub-layers).
 
 Self-Attention Block (self._sa_block(...)):
 

@@ -206,15 +206,14 @@ x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask, is_causal=
 
 - This follows the Pre-LN Transformer architecture (normalization before sub-layers).
 
-Self-Attention Block (self._sa_block(...)):
+**2-Self-Attention Block (`self._sa_block(...)`):**
 
-Computes multi-head self-attention on the normalized input.
+- Computes multi-head self-attention on the normalized input.
 
-Handles masking (src_mask, src_key_padding_mask) and causal constraints (is_causal).
+- Handles masking (`src_mask`, `src_key_padding_mask`) and causal constraints (`is_causal`).
 
-Residual Connection (x + ...):
+**3-Residual Connection (`x + ...`):**
 
-Adds the original x (pre-normalization) to the output of the self-attention block.
+- Adds the original `x` (pre-normalization) to the output of the self-attention block.
 
-Helps mitigate vanishing gradients and preserves information flow.
-Assign the input tensor `src` to `x`
+- Helps mitigate vanishing gradients and preserves information flow.

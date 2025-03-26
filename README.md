@@ -233,3 +233,8 @@ Expands features to dim_feedforward and contracts back to `d_model`.
 
 3- Residual Connection (`x + ...`): Adds the residual from the previous step to the feedforward output.
 
+### Self_Attention Block (`def _sa_block`):
+
+This method implements a factorized self-attention mechanism, splitting the input into two parts ("spatial" and "temporal") and processing them separately. 
+
+

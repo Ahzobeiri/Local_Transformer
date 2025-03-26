@@ -159,15 +159,15 @@ There is logic to mark whether the activation is either ReLU or GELU.
 ### Forward Method (`def forward`):
 
 ```python
-    def forward(
-            self,
-            src: Tensor,
-            src_mask: Optional[Tensor] = None,
-            src_key_padding_mask: Optional[Tensor] = None,
-            is_causal: bool = False) -> Tensor:
+def forward(
+        self,
+        src: Tensor,
+        src_mask: Optional[Tensor] = None,
+        src_key_padding_mask: Optional[Tensor] = None,
+        is_causal: bool = False) -> Tensor:
 
-        x = src
-        x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask, is_causal=is_causal)
-        x = x + self._ff_block(self.norm2(x))
-        return x
+    x = src
+    x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask, is_causal=is_causal)
+    x = x + self._ff_block(self.norm2(x))
+    return x
 ```

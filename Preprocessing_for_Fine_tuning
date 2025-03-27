@@ -36,7 +36,6 @@ def get_eeg(data_folder, patient_id, db: lmdb.open, file_key_list: list):
     ]
     
     # Define all unique electrodes needed for the montage.
-    # (Note: ensure commas between items!)
     eeg_channels = ['Fp1', 'F7', 'T3', 'T5', 'O1',
                     'Fp2', 'F8', 'T4', 'T6', 'O2',
                     'F3', 'C3', 'P3', 'F4', 'C4',

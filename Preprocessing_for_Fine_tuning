@@ -75,6 +75,7 @@ def get_eeg(data_folder, patient_id, db: lmdb.open, file_key_list: list):
             
         # Channel Processing: expand to ensure channels in correct order.
         data = expand_channels(data, channels, eeg_channels)
+        # data, channels = reduce_channels(data, channels, eeg_channels)
         channels = eeg_channels
         
         # Preprocessing: filtering, notch and bandpass, then resampling.

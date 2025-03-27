@@ -103,21 +103,27 @@ def get_eeg(data_folder, patient_id, db: lmdb.open, file_key_list: list):
             
         # Trim data to remove unstable segments at start and end.
         trimmed_data = signal_data[60 * 128 : -(a + 60 * 128), :]
+        # print(trimmed_data.shape)
+
         
         # Reshape into epochs: each epoch is 30 seconds long, sampled at 128 Hz.
         num_epochs = trimmed_data.shape[0] // (30 * 128)
         segmented = trimmed_data.reshape(num_epochs, 30, 128, 18)
+
         # Transpose to get final shape: (num_epochs, channels, time_steps, samples_per_second)
         segmented = segmented.transpose(0, 3, 1, 2)
         print("Segmented data shape:", segmented.shape)
 
-        ######################################################
-        # Normalize and Save each epoch along with labels to LMDB.
-        ######################################################
+
+        # Normalize
         min_val = np.min(segmented)
         max_val = np.max(segmented)
         if min_val != max_val:
             segmented = 2 * (segmented - min_val) / (max_val - min_val) - 1
+
+        ######################################################
+        # Save each epoch along with labels to LMDB.
+        ######################################################
 
             # Use the file name from the recording location for creating a unique key.
             file_name = recording_location.split('/')[-1]

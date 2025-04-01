@@ -32,6 +32,19 @@
             continue
 ```
 
+# Preprocessing_for_finetuning_last_Version
+
+Save all the data (*only the last recording*) in an LMDB list format with the following structure:
+
+Structure of `dataset`:
+
+```python
+{
+  'train': ['P001_EEG_epoch0', 'P001_EEG_epoch1', ..., 'P400_EEG_epochN', ...],
+  'val': ['P401_EEG_epoch0', 'P401_EEG_epoch1', ..., 'P500_EEG_epochN', ...],
+  'test': ['P501_EEG_epoch0', 'P501_EEG_epoch1', ..., 'P607_EEG_epochN', ...]
+}
+```
 
 # Criss_cross_transformer
 

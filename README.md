@@ -45,7 +45,16 @@ Structure of `dataset`:
   'test': ['P501_EEG_epoch0', 'P501_EEG_epoch1', ..., 'P607_EEG_epochN', ...]
 }
 ```
-Where each epoch's of patients is stored in the LMDB database as a key-value pair where:
+Where each epoch's of patients is stored in the LMDB database as a key-value pair:
+
+```python
+data_dict = {
+    'sample': <normalized epoch data as float32>,
+    'outcome': outcome,  # e.g., 0 or 1
+    'cpc': cpc           # e.g., 1, 2, 3, 4, or 5
+}
+```
+Where:
 
 The key is a unique identifier like <recording_id>_epoch<i> (eg. `P001_EEG_epoch0`)
 

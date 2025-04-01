@@ -8,8 +8,8 @@ class Model(nn.Module):
     def __init__(self, param):
         super(Model, self).__init__()
         self.backbone = CBraMod(
-            in_dim=128, out_dim=128, d_model=128,
-            dim_feedforward=512, seq_len=30,
+            in_dim=200, out_dim=200, d_model=200,
+            dim_feedforward=800, seq_len=30,
             n_layer=12, nhead=8
         )
 
@@ -18,8 +18,8 @@ class Model(nn.Module):
             self.backbone.load_state_dict(torch.load(param.foundation_dir, map_location=map_location))
         self.backbone.proj_out = nn.Identity()
 
-        # For custom data: 18 channels, 30 time steps, backbone outputs dimension 128
-        flattened_size = 18 * 30 * 128
+        # For custom data: 18 channels, 30 time steps, backbone outputs dimension 200
+        flattened_size = 18 * 30 * 200 # = 108000
         self.classifier = nn.Sequential(
             nn.Linear(flattened_size, 10 * 200),
             nn.ELU(),

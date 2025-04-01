@@ -45,6 +45,17 @@ Structure of `dataset`:
   'test': ['P501_EEG_epoch0', 'P501_EEG_epoch1', ..., 'P607_EEG_epochN', ...]
 }
 ```
+Where each epoch's of patients is stored in the LMDB database as a key-value pair where:
+
+The key is a unique identifier like <recording_id>_epoch<i> (eg. `P001_EEG_epoch0`)
+
+The value is a dictionary containing:
+
+`sample` → The normalized EEG epoch data as a NumPy array (`float32`), shaped `(channels, time_steps, samples_per_second)`, which here is `(18, 30, 128)`.
+
+`outcome` → A binary label (e.g., `0` for good, `1` for poor).
+
+`cpc` → A CPC score (integer from `1` to `5`).
 
 # Criss_cross_transformer
 

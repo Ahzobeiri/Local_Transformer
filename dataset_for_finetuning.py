@@ -46,6 +46,7 @@ class LoadDataset(object):
         self.datasets_dir = params.datasets_dir
 
     def get_data_loader(self):
+        # Create a CustomeDataset for each splite
         train_set = CustomDataset(self.datasets_dir, mode='train')
         val_set = CustomDataset(self.datasets_dir, mode='val')
         test_set = CustomDataset(self.datasets_dir, mode='test')

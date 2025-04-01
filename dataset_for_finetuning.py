@@ -15,6 +15,7 @@ class CustomDataset(Dataset):
     ):
         super(CustomDataset, self).__init__()
         self.db = lmdb.open(data_dir, readonly=True, lock=False, readahead=True, meminit=False)
+        # Load the global key dictionary and select the keys for the desired split.
         with self.db.begin(write=False) as txn:
             self.keys = pickle.loads(txn.get('__keys__'.encode()))[mode]
 
@@ -23,16 +24,20 @@ class CustomDataset(Dataset):
 
     def __getitem__(self, idx):
         key = self.keys[idx]
+        # Retrieve the data dictionary corresponding to the key.
         with self.db.begin(write=False) as txn:
             pair = pickle.loads(txn.get(key.encode()))
-        data = pair['sample']
-        label = pair['label']
-        return data/100, label
+        data = pair['sample']        # EEG sample data
+        outcome = pair['outcome']    # Binary label (0 or 1)
+        cpc = pair['cpc']            # CPC score (1-5)
+        return data, outcome, cpc
 
     def collate(self, batch):
+        # Collate the batch into separate NumPy arrays.
         x_data = np.array([x[0] for x in batch])
-        y_label = np.array([x[1] for x in batch])
-        return to_tensor(x_data), to_tensor(y_label).long()
+        outcome_labels = np.array([x[1] for x in batch])
+        cpc_labels = np.array([x[2] for x in batch])
+        return to_tensor(x_data), to_tensor(outcome_labels).long(), to_tensor(cpc_labels).long()
 
 
 class LoadDataset(object):

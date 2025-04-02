@@ -135,12 +135,18 @@ def main():
         t = Trainer(params, data_loader, model)
         t.train_for_multiclass()
     # New branch for your custom I-CARE data with dual heads (Outcome and CPC)
-    elif params.downstream_dataset == 'I-CARE':
+    elif params.downstream_dataset == 'I-CARE-Outcome':
         load_dataset = dataset_for_finetuning.LoadDataset(params)
         data_loader = load_dataset.get_data_loader()
         model = model_for_finetuning.Model(params)  # This model returns (outcome_logits, cpc_logits)
         t = Trainer(params, data_loader, model)
-        t.train_for_multitask()  # Assumes you have implemented a multi-task training routine in Trainer
+        t.train_for_binaryclass()  # Train only for outcome.
+    elif params.downstream_dataset == 'I-CARE-CPC':
+        load_dataset = dataset_for_finetuning.LoadDataset(params)
+        data_loader = load_dataset.get_data_loader()
+        model = model_for_finetuning.Model(params)  # This model returns (outcome_logits, cpc_logits)
+        t = Trainer(params, data_loader, model)
+        t.train_for_multiclass() # Train only for CPC.
     else:
         raise ValueError("Unknown downstream_dataset provided.")
 

@@ -33,6 +33,9 @@ def main():
                         default='/data/datasets/BigDownstream/Faced/processed',
                         help='datasets_dir')
     parser.add_argument('--num_of_classes', type=int, default=9, help='number of classes (for datasets with a single head)')
+    # New arguments for I-CARE multi-head model:
+    parser.add_argument('--num_of_outcome', type=int, default=2, help='number of outcome classes (binary classification)')
+    parser.add_argument('--num_of_cpc', type=int, default=5, help='number of CPC classes (for CPC classification)')    
     parser.add_argument('--model_dir', type=str, default='/data/wjq/models_weights/Big/BigFACED', help='model_dir')
     """############ Downstream dataset settings ############"""
 

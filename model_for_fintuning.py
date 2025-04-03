@@ -57,7 +57,7 @@ class Model(nn.Module):
         out = feats.contiguous().view(bz, ch_num*seq_len*200)
 
         # Obtain the predictions from each classifier head.       
-        out_outcome = self.classifier_outcome(out)
+        # out_outcome = self.classifier_outcome(out)
         out_cpc = self.classifier_cpc(out)
         
-        return out_outcome, out_cpc
+        return out_cpc #, out_outcome

@@ -1,0 +1,1 @@
+python custom_finetune_main.py --downstream_dataset I-CARE-CPC --datasets_dir /data/datasets/BigDownstream/I-CARE/LMDB_DATA --num_of_classes 5 --model_dir .../models/I-care --epochs 50 --batch_size 64 --lr 5e-4

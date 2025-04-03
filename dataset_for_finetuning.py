@@ -29,7 +29,7 @@ class CustomDataset(Dataset):
             pair = pickle.loads(txn.get(key.encode()))
         data = pair['sample']        # EEG sample data
         # outcome = pair['outcome']    # Binary label (0 or 1)
-        cpc = pair['cpc']            # CPC score (1-5)
+        cpc = pair['cpc'] - 1          # Convert CPC Labels from [1,5] to [0,4]
         return data, cpc #, outcome
 
     def collate(self, batch):

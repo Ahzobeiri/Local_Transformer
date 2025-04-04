@@ -169,8 +169,8 @@ def preprocess_data(data, sampling_frequency, utility_frequency):
 
 if __name__ == '__main__':
     setup_seed(42)
-    data_folder = 'path/to/data'
-    output_db = 'path/to/database.lmdb'
+    data_folder = 'projects/scratch/fhajati/physionet.org/files/i-care/2.1/training'
+    output_db = 'projects/scratch/fhajati/physionet.org/files/i-care/2.1/LMDB_DATA'
     
     # Initialize LMDB (adjust map_size as needed)
     env = lmdb.open(output_db, map_size=1099511627776)  # 1 TB

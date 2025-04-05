@@ -18,6 +18,19 @@ class CustomDataset(Dataset):
         # Load the global key dictionary and select the keys for the desired split.
         with self.db.begin(write=False) as txn:
             self.keys = pickle.loads(txn.get('__keys__'.encode()))[mode]
+            # Compute class distribution if training set
+            if mode == 'train':
+            self.class_counts = self._compute_class_counts()
+            print(f"Training set class counts: {self.class_counts}")
+
+    def _compute_class_counts(self):
+        counts = [0] * 5  # 5 classes (0 to 4)
+        with self.db.begin(write=False) as txn:
+            for key in self.keys:
+                pair = pickle.loads(txn.get(key.encode()))
+                cpc = pair['cpc'] - 1  # Adjust to [0,4]
+                counts[cpc] += 1
+        return counts
 
     def __len__(self):
         return len((self.keys))

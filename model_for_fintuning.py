@@ -21,6 +21,7 @@ class Model(nn.Module):
         # For custom data: 18 channels, 30 time steps, backbone outputs dimension 200
         flattened_size = 18 * 30 * 200 # = 108000
 
+'''
         # Classifier for Outcome (binary: 2 classes)
         self.classifier_outcome = nn.Sequential(
             nn.Linear(flattened_size, 10 * 200),
@@ -31,7 +32,7 @@ class Model(nn.Module):
             nn.Dropout(param.dropout),
             nn.Linear(200, param.num_of_outcome) # Should be 2
         )
-
+'''
         # Classifier for CPC (5 classes)
         self.classifier_cpc = nn.Sequential(
             nn.Linear(flattened_size, 10 * 200),

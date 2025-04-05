@@ -66,6 +66,45 @@ The value is a dictionary containing:
 
 `cpc` → A CPC score (integer from `1` to `5`).
 
+
+
+
+
+# dataset_for_finetuning.py
+```python
+    def get_data_loader(self):
+        # Create a CustomeDataset for each splite
+        train_set = CustomDataset(self.datasets_dir, mode='train')
+        val_set = CustomDataset(self.datasets_dir, mode='val')
+        test_set = CustomDataset(self.datasets_dir, mode='test')
+        print(len(train_set), len(val_set), len(test_set))
+        print(len(train_set)+len(val_set)+len(test_set))
+        data_loader = {
+            'train': DataLoader(
+                train_set,
+                batch_size=self.params.batch_size,
+                collate_fn=train_set.collate,
+                shuffle=True,
+            ),
+            'val': DataLoader(
+                val_set,
+                batch_size=self.params.batch_size,
+                collate_fn=val_set.collate,
+                shuffle=False,
+            ),
+            'test': DataLoader(
+                test_set,
+                batch_size=self.params.batch_size,
+                collate_fn=test_set.collate,
+                shuffle=False,
+            ),
+        }
+        return data_loader
+
+```python
+
+
+
 # Criss_cross_transformer
 
 ## TransformerEncoder Class

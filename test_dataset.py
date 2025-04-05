@@ -11,6 +11,13 @@ def test_dataset(data_dir):
     sample, cpc = dataset[0]
     print("First sample shape:", np.array(sample).shape)
     print("First CPC label (after 0-indexing):", cpc)
+
+    for i in range(100):
+        key = dataset.keys[i]  # This is the unique key saved (e.g., "P001_EEG_epoch0")
+        _, cpc = dataset[i]
+        print(f"Sample {i} with key '{key}' has CPC label (0-indexed): {cpc}")
+        print(f"   Sample shape: {np.array(data).shape}")
+
     
     # Create a mini-batch using the collate function.
     batch_size = 4 if len(dataset) >= 4 else len(dataset)

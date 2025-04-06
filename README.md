@@ -3,7 +3,7 @@
 
 **Input:**
 
-*signal (np.array):* EEG signal of shape `(num_channels, num_points)`.
+*signal (np.array):* EEG signal of shape `(num_channels, num_points)`.....
 
 *seg_length (int):* Desired segment length. (By deafualt `8192`)
 

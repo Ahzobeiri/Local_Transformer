@@ -141,13 +141,13 @@ def main():
     elif params.downstream_dataset == 'I-CARE-Outcome':
         load_dataset = dataset_for_finetuning.LoadDataset(params)
         data_loader = load_dataset.get_data_loader()
-        model = model_for_finetuning.Model(params)  # This model returns (outcome_logits, cpc_logits)
+        model = model_for_finetuning.Model(params)  # This model returns (outcome_logits)
         t = Trainer(params, data_loader, model)
         t.train_for_binaryclass()  # Train only for outcome.
     elif params.downstream_dataset == 'I-CARE-CPC':
         load_dataset = dataset_for_finetuning.LoadDataset(params)
         data_loader = load_dataset.get_data_loader()
-        model = model_for_finetuning.Model(params)  # This model returns (outcome_logits, cpc_logits)
+        model = model_for_finetuning.Model(params)  # This model returns (cpc_logits)
         t = Trainer(params, data_loader, model)
         t.train_for_multiclass() # Train only for CPC.
     else:

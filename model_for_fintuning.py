@@ -21,28 +21,17 @@ class Model(nn.Module):
         # For custom data: 18 channels, 30 time steps, backbone outputs dimension 200
         flattened_size = 18 * 30 * 200 # = 108000
 
-'''
-        # Classifier for Outcome (binary: 2 classes)
-        self.classifier_outcome = nn.Sequential(
+        # Classifier for Outcome (binary: 2 classes) and CPC (5 Classes)
+        self.classifier_layer = nn.Sequential(
             nn.Linear(flattened_size, 10 * 200),
             nn.ELU(),
             nn.Dropout(param.dropout),
             nn.Linear(10 * 200, 200),
             nn.ELU(),
             nn.Dropout(param.dropout),
-            nn.Linear(200, param.num_of_outcome) # Should be 2
+            nn.Linear(200, param.num_of_classes) # Should be 2 for Outcome and 5 for CPC
         )
-'''
-        # Classifier for CPC (5 classes)
-        self.classifier_cpc = nn.Sequential(
-            nn.Linear(flattened_size, 10 * 200),
-            nn.ELU(),
-            nn.Dropout(param.dropout),
-            nn.Linear(10 * 200, 200),
-            nn.ELU(),
-            nn.Dropout(param.dropout),
-            nn.Linear(200, param.num_of_cpc)  # Should be 5
-        )
+    
 
     def forward(self, x):
         """
@@ -59,6 +48,6 @@ class Model(nn.Module):
 
         # Obtain the predictions from each classifier head.       
         # out_outcome = self.classifier_outcome(out)
-        out_cpc = self.classifier_cpc(out)
+        out_classifier = self.classifier_layer(out)
         
-        return out_cpc #, out_outcome
+        return out_classifier

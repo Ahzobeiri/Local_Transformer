@@ -44,17 +44,16 @@ class CustomDataset(Dataset):
         with self.db.begin(write=False) as txn:
             pair = pickle.loads(txn.get(key.encode()))
         data = pair['sample']        # EEG sample data
-        # outcome = pair['outcome']    # Binary label (0 or 1)
-        cpc = pair['cpc'] - 1          # Convert CPC Labels from [1,5] to [0,4]
-        return data, cpc #, outcome
+        outcome = pair['outcome']    # Binary label (0 or 1)
+        # cpc = pair['cpc'] - 1          # Convert CPC Labels from [1,5] to [0,4]
+        return data, outcome
 
     def collate(self, batch):
         # Collate the batch into separate NumPy arrays.
         x_data = np.array([x[0] for x in batch])
-        # outcome_labels = np.array([x[1] for x in batch])
-        cpc_labels = np.array([x[1] for x in batch])
-        return to_tensor(x_data), to_tensor(cpc_labels).long() # to_tensor(outcome_labels).long() 
-
+        outcome_labels = np.array([x[1] for x in batch])
+        # cpc_labels = np.array([x[1] for x in batch])
+        return to_tensor(x_data), to_tensor(outcome_labels).long() # to_tensor(cpc_labels).long() 
 
 class LoadDataset(object):
     def __init__(self, params):

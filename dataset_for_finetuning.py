@@ -52,8 +52,9 @@ class CustomDataset(Dataset):
         # Collate the batch into separate NumPy arrays.
         x_data = np.array([x[0] for x in batch])
         outcome_labels = np.array([x[1] for x in batch])
+        outcome_labels = outcome_labels.reshape(-1, 1)
         # cpc_labels = np.array([x[1] for x in batch])
-        return to_tensor(x_data), to_tensor(outcome_labels).long() # to_tensor(cpc_labels).long() 
+        return to_tensor(x_data), to_tensor(outcome_labels).float() # to_tensor(cpc_labels).long() 
 
 class LoadDataset(object):
     def __init__(self, params):

@@ -29,7 +29,7 @@ class Model(nn.Module):
             nn.Linear(10 * 200, 200),
             nn.ELU(),
             nn.Dropout(param.dropout),
-            nn.Linear(200, param.num_of_classes) # Should be 2 for Outcome and 5 for CPC
+            nn.Linear(200, 1) # Should be 1 for Outcome and 5 for CPC
         )
     
 

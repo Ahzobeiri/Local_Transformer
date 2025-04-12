@@ -26,15 +26,6 @@ def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
       file_key_list (list): A list to collect keys for saved samples (for the current split).
     """
     
-    # Specify the bipolar montage (pairs of channels)
-    bipolar_montage = [
-        ('Fp1', 'F7'), ('F7', 'T3'), ('T3', 'T5'), ('T5', 'O1'),
-        ('Fp2', 'F8'), ('F8', 'T4'), ('T4', 'T6'), ('T6', 'O2'),
-        ('Fp1', 'F3'), ('F3', 'C3'), ('C3', 'P3'), ('P3', 'O1'),
-        ('Fp2', 'F4'), ('F4', 'C4'), ('C4', 'P4'), ('P4', 'O2'),
-        ('Fz', 'Cz'), ('Cz', 'Pz')
-    ]
-    
     # Define all unique electrodes needed for the montage.
     eeg_channels = ['Fp1', 'F7', 'T3', 'T5', 'O1',
                     'Fp2', 'F8', 'T4', 'T6', 'O2',
@@ -79,13 +70,7 @@ def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
         
         # Preprocessing: filtering, notch and bandpass, then resampling.
         data, sampling_frequency = preprocess_data(data, sampling_frequency, utility_frequency)
-        
-        # Bipolar Referencing: compute difference between paired channels.
-        channel_indices = {channel: idx for idx, channel in enumerate(channels)}
-        signal_data = np.array([
-            data[channel_indices[ch1], :] - data[channel_indices[ch2], :]
-            for ch1, ch2 in bipolar_montage
-        ])
+
         
         ######################################################
         # Epoch Segmentation

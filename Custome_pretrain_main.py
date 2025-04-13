@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from datasets.pretraining_dataset import PretrainingDataset
+from datasets.pretraining_icare_dataset import IcarePretrainingDataset
 from models.cbramod import CBraMod
 from pretrain_trainer import Trainer
 
@@ -48,7 +48,7 @@ def main():
     params = parser.parse_args()
     print(params)
     setup_seed(params.seed)
-    pretrained_dataset = PretrainingDataset(dataset_dir=params.dataset_dir)
+    pretrained_dataset = IcarePretrainingDataset(dataset_dir=params.dataset_dir)
     print(len(pretrained_dataset))
     data_loader = DataLoader(
         pretrained_dataset,

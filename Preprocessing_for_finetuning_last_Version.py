@@ -94,18 +94,18 @@ def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
         signal_data = signal_data.T  # Now shape (num_samples, num_channels=18)
         
         total_samples = signal_data.shape[0]
-        a = total_samples % (30 * 128)
+        a = total_samples % (30 * 200)
         
         # Check minimum length (e.g., at least 2 minutes)
-        if total_samples < 120 * 128:
+        if total_samples < 120 * 200:
             return False
             
         # Trim data to remove unstable segments at start and end.
-        trimmed_data = signal_data[60 * 128 : -(a + 60 * 128), :]
+        trimmed_data = signal_data[60 * 200 : -(a + 60 * 200), :]
         
         # Reshape into epochs: each epoch is 30 seconds long, sampled at 128 Hz.
-        num_epochs = trimmed_data.shape[0] // (30 * 128)
-        segmented = trimmed_data.reshape(num_epochs, 30, 128, 18)
+        num_epochs = trimmed_data.shape[0] // (30 * 200)
+        segmented = trimmed_data.reshape(num_epochs, 30, 200, 18)
         # Transpose to get final shape: (num_epochs, channels, time_steps, samples_per_second)
         segmented = segmented.transpose(0, 3, 1, 2)
         print("Segmented data shape:", segmented.shape)
@@ -159,7 +159,7 @@ def preprocess_data(data, sampling_frequency, utility_frequency):
     data = mne.filter.filter_data(data, sampling_frequency, passband[0], passband[1], n_jobs=4, verbose='error')
 
     # Resample the data.
-    resampling_frequency = 128  # Desired resampling frequency.
+    resampling_frequency = 200  # Desired resampling frequency.
     lcm = np.lcm(int(round(sampling_frequency)), int(round(resampling_frequency)))
     up = int(round(lcm / sampling_frequency))
     down = int(round(lcm / resampling_frequency))

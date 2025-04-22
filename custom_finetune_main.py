@@ -6,11 +6,11 @@ import torch
 
 # Import all available dataset modules. We now include our custom "I-CARE" dataset.
 from datasets import faced_dataset, seedv_dataset, physio_dataset, shu_dataset, isruc_dataset, chb_dataset, \
-    speech_dataset, mumtaz_dataset, seedvig_dataset, stress_dataset, tuev_dataset, tuab_dataset, bciciv2a_dataset, dataset_for_finetuning
+    speech_dataset, mumtaz_dataset, seedvig_dataset, stress_dataset, tuev_dataset, tuab_dataset, bciciv2a_dataset, dataset_for_finetuning_outcome, dataset_for_finetuning_CPC
 # Import the model modules, including our custom model for fine-tuning.
 from models import model_for_faced, model_for_seedv, model_for_physio, model_for_shu, model_for_isruc, model_for_chb, \
     model_for_speech, model_for_mumtaz, model_for_seedvig, model_for_stress, model_for_tuev, model_for_tuab, \
-    model_for_bciciv2a, model_for_finetuning
+    model_for_bciciv2a, model_for_finetuning_outcome, model_for_finetuning_CPC
 from finetune_trainer import Trainer
 
 
@@ -139,15 +139,15 @@ def main():
         t.train_for_multiclass()
     # New branch for your custom I-CARE data with dual heads (Outcome and CPC)
     elif params.downstream_dataset == 'I-CARE-Outcome':
-        load_dataset = dataset_for_finetuning.LoadDataset(params)
+        load_dataset = dataset_for_finetuning_outcome.LoadDataset(params)
         data_loader = load_dataset.get_data_loader()
-        model = model_for_finetuning.Model(params)  # This model returns (outcome_logits)
+        model = model_for_finetuning_outcome.Model(params)  # This model returns (outcome_logits)
         t = Trainer(params, data_loader, model)
         t.train_for_binaryclass()  # Train only for outcome.
     elif params.downstream_dataset == 'I-CARE-CPC':
-        load_dataset = dataset_for_finetuning.LoadDataset(params)
+        load_dataset = dataset_for_finetuning_CPC.LoadDataset(params)
         data_loader = load_dataset.get_data_loader()
-        model = model_for_finetuning.Model(params)  # This model returns (cpc_logits)
+        model = model_for_finetuning_CPC.Model(params)  # This model returns (cpc_logits)
         t = Trainer(params, data_loader, model)
         t.train_for_multiclass() # Train only for CPC.
     else:

@@ -18,13 +18,12 @@ class CustomDataset(Dataset):
         # Load the global key dictionary and select the keys for the desired split.
         with self.db.begin(write=False) as txn:
             self.keys = pickle.loads(txn.get('__keys__'.encode()))[mode]
-            '''
+        
             # Compute class distribution if training set
             if mode == 'train':
             self.class_counts = self._compute_class_counts()
             print(f"Training set class counts: {self.class_counts}")
-            '''
-'''
+
     def _compute_class_counts(self):
         counts = [0] * 5  # 5 classes (0 to 4)
         with self.db.begin(write=False) as txn:
@@ -33,7 +32,6 @@ class CustomDataset(Dataset):
                 cpc = pair['cpc'] - 1  # Adjust to [0,4]
                 counts[cpc] += 1
         return counts
-    '''
 
     def __len__(self):
         return len((self.keys))
@@ -60,16 +58,16 @@ class LoadDataset(object):
     def __init__(self, params):
         self.params = params
         self.datasets_dir = params.datasets_dir
-'''
+        
         # Pass class counts to params if training
         self.train_set = CustomDataset(self.datasets_dir, mode='train')
-        if hasattr(self.train_set, 'class_counts'):
-            total_samples = sum(self.train_set.class_counts)
-            num_classes = 5
-            class_weights = [total_samples / (num_classes * count) if count > 0 else 1.0 
-                            for count in self.train_set.class_counts]
-            params.class_weights = torch.tensor(class_weights, dtype=torch.float)
-'''
+        self.train_set.class_counts = self.train_set._compute_class_counts()
+        total_samples = sum(self.train_set.class_counts)
+        num_classes = 5
+        class_weights = [total_samples / (num_classes * count) if count > 0 else 1.0 
+                         for count in self.train_set.class_counts]
+        self.params.class_weights = torch.tensor(class_weights, dtype=torch.float)
+        
     def get_data_loader(self):
         # Create a CustomeDataset for each splite
         train_set = CustomDataset(self.datasets_dir, mode='train')

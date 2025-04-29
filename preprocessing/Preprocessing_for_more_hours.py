@@ -19,6 +19,12 @@ def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
     Load & concatenate the first `count` EEG recordings for a patient,
     then preprocess, epoch, and save each 30 s segment to LMDB.
     """
+    # **** Extract labels for the patient ****
+    # Load the patient metadata and extract the outcome and CPC labels.
+    patient_metadata = load_challenge_data(data_folder, patient_id)
+    outcome = get_outcome(patient_metadata)  # Binary: 0 (Good) or 1 (Poor)
+    cpc = get_cpc(patient_metadata)          # CPC score: integer (1-5)
+
     
     # Define all unique electrodes needed for the montage.
     eeg_channels = ['Fp1', 'F7', 'T3', 'T5', 'O1',
@@ -28,9 +34,8 @@ def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
     
     group = 'EEG'
     
-    # Find all recording files for the patient.
+    # 1. Find all recording files for the patient.
     recording_ids = find_recording_files(data_folder, patient_id)
-
     # Check if there are any recordings available.
     if len(recording_ids) == 0:
         return False
@@ -38,12 +43,12 @@ def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
     # 2. pick the first subset of recordings we want
     selected = recording_ids[:count]
 
-    
+
     all_data = []
     all_sf = []
     all_ut = []
 
-    # Load & Accumulate
+    # 3.Load & Accumulate
     for recording_id in selected:
         recording_location = os.path.join(data_folder, patient_id, f'{recording_id}_{group}')
         
@@ -51,35 +56,47 @@ def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
         if not os.path.exists(recording_location + '.hea'):
             return False
 
-    try:
-        # **** Extract labels for the patient ****
-        # Load the patient metadata and extract the outcome and CPC labels.
-        patient_metadata = load_challenge_data(data_folder, patient_id)
-        outcome = get_outcome(patient_metadata)  # Binary: 0 (Good) or 1 (Poor)
-        cpc = get_cpc(patient_metadata)          # CPC score: integer (1-5)
-
         # Load raw data
         data, channels, sampling_frequency = load_recording_data(recording_location)
         utility_frequency = get_utility_frequency(recording_location + '.hea')
         
         # Ensure all required EEG channels are available.
         if not all(channel in channels for channel in eeg_channels):
+            print(f"Missing channels in {rec}, skipping")
             return False
             
         # Channel Processing: expand to ensure channels in correct order.
         data = expand_channels(data, channels, eeg_channels)
         channels = eeg_channels
-        
-        # Preprocessing: filtering, notch and bandpass, then resampling.
-        data, sampling_frequency = preprocess_data(data, sampling_frequency, utility_frequency)
 
-        
-        ######################################################
-        # Epoch Segmentation
-        ######################################################
-        # Transpose to (samples, channels) format.
-        signal_data = data.T  # Now shape (num_samples, num_channels=18)      
-        total_samples = signal_data.shape[0]
+        all_data.append(data)
+        all_sf.append(sampling_frequency)
+        all_ut.append(ut)
+
+    if not all_data:
+        return False
+
+    '''
+     # 4. sanity‐check sampling / utility freqs
+     if len(set(all_sf)) != 1 or len(set(all_ut)) != 1:
+         raise RuntimeError("Different sampling or utility freqs across recordings")
+    '''
+
+    # 5. concatenate in time
+    data_cat = np.concatenate(all_data, axis=1)
+    sf = all_sf[0]
+    ut = all_ut[0]
+
+    # 6. Preprocessing: filtering, notch and bandpass, then resampling.
+    data_filt, new_sf = preprocess_data(data_cat, sf, ut)
+    
+
+    ######################################################
+    # 7.Epoch Segmentation
+    ######################################################
+    # Transpose to (samples, channels) format.
+    signal_data = data_filt.T  # Now shape (num_samples, num_channels=19)      
+    total_samples = signal_data.shape[0]
         
         # Check minimum length (e.g., at least 2 minutes)
         if total_samples < 120 * 200:

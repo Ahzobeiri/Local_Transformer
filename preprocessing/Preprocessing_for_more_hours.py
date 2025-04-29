@@ -40,6 +40,8 @@ def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
     if len(recording_ids) == 0:
         return False
 
+    count = 2
+    
     # 2. pick the first subset of recordings we want
     selected = recording_ids[:count]
 
@@ -97,53 +99,51 @@ def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
     # Transpose to (samples, channels) format.
     signal_data = data_filt.T  # Now shape (num_samples, num_channels=19)      
     total_samples = signal_data.shape[0]
+    
+    # Check minimum length (e.g., at least 2 minutes)
+    if total_samples < 120 * 200:
+        print("Not enough data after concatenation")
+        return False
         
-        # Check minimum length (e.g., at least 2 minutes)
-        if total_samples < 120 * 200:
-            return False
-
-
-        a = total_samples % (30 * 200)   
-        # Trim data to remove unstable segments at start and end.
-        trimmed_data = signal_data[60 * 200 : -(a + 60 * 200), :]
+    a = total_samples % (30 * 200)
+    # Trim data to remove unstable segments at start and end.
+    trimmed_data = signal_data[60 * 200 : -(a + 60 * 200), :]
+    
+    # Reshape into epochs: each epoch is 30 seconds long, sampled at 128 Hz.
+    num_epochs = trimmed_data.shape[0] // (30 * 200)
+    segmented = trimmed_data.reshape(num_epochs, 30 * 200, 19)
+    # Transpose to get final shape: (num_epochs, channels, time_steps, samples_per_second)
+    segmented = segmented.reshape(num_epochs, 30, 200, 19).transpose(0, 3, 1, 2)  # (epochs, 19, 30, 200)
+    print("Segmented data shape:", segmented.shape)
+    
+    '''
+    # Normalize the segmented data.
+    min_val = np.min(segmented)
+    max_val = np.max(segmented)
+    if min_val != max_val:
+        segmented = 2 * (segmented - min_val) / (max_val - min_val) - 1
+    '''
+    
+    ######################################################
+    # Save each epoch along with labels to LMDB.
+    ######################################################
+    # Use the file name from the recording location for creating a unique key.
+    file_name = f"{patient_id}_first_{count}"
+    for i, sample in enumerate(segmented):
+        sample_key = f'{file_name}_epoch{i}'
+        print("Saving sample:", sample_key)
+        file_key_list.append(sample_key)
         
-        # Reshape into epochs: each epoch is 30 seconds long, sampled at 128 Hz.
-        num_epochs = trimmed_data.shape[0] // (30 * 200)
-        segmented = trimmed_data.reshape(num_epochs, 30 * 200, 19)
-        # Transpose to get final shape: (num_epochs, channels, time_steps, samples_per_second)
-        segmented = segmented.reshape(num_epochs, 30, 200, 19).transpose(0, 3, 1, 2)  # (epochs, 19, 30, 200)
-        print("Segmented data shape:", segmented.shape)
-
-        '''
-        # Normalize the segmented data.
-        min_val = np.min(segmented)
-        max_val = np.max(segmented)
-        if min_val != max_val:
-            segmented = 2 * (segmented - min_val) / (max_val - min_val) - 1
-        '''
-        
-        ######################################################
-        # Save each epoch along with labels to LMDB.
-        ######################################################
-        # Use the file name from the recording location for creating a unique key.
-        file_name = recording_location.split('/')[-1]
-        for i, sample in enumerate(segmented):
-            sample_key = f'{file_name}_epoch{i}'
-            print("Saving sample:", sample_key)
-            file_key_list.append(sample_key)
+        # Create a dictionary with the EEG sample and its labels.
+        data_dict = {
+            'sample': sample.astype(np.float32),
+            'outcome': outcome,  # Binary: 0 (Good) or 1 (Poor)
+            'cpc': cpc           # CPC score: integer (1-5)
+        }
+        with db.begin(write=True) as txn:
+            txn.put(key=sample_key.encode(), value=pickle.dumps(data_dict))
             
-            # Create a dictionary with the EEG sample and its labels.
-            data_dict = {
-                'sample': sample.astype(np.float32),
-                'outcome': outcome,  # Binary: 0 (Good) or 1 (Poor)
-                'cpc': cpc           # CPC score: integer (1-5)
-            }
-
-
-            with db.begin(write=True) as txn:
-                txn.put(key=sample_key.encode(), value=pickle.dumps(data_dict))
-        
-        return True         
+    return True         
 
     except Exception as e:
         print(f"Error processing {patient_id}: {str(e)}")

@@ -16,14 +16,8 @@ def setup_seed(seed):
 
 def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
     """
-    Process and save segmented EEG epochs to LMDB for a given patient.
-    Also extract and store the corresponding outcome and CPC labels.
-    
-    Parameters:
-      data_folder (str): The folder containing patient data.
-      patient_id (str): The unique identifier for the patient.
-      db (lmdb.Environment): Open LMDB environment for storing data.
-      file_key_list (list): A list to collect keys for saved samples (for the current split).
+    Load & concatenate the first `count` EEG recordings for a patient,
+    then preprocess, epoch, and save each 30 s segment to LMDB.
     """
     
     # Define all unique electrodes needed for the montage.
@@ -34,20 +28,28 @@ def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
     
     group = 'EEG'
     
-    # Find recording files for the patient.
+    # Find all recording files for the patient.
     recording_ids = find_recording_files(data_folder, patient_id)
 
     # Check if there are any recordings available.
     if len(recording_ids) == 0:
         return False
 
-    # Use the most recent recording.
-    recording_id = recording_ids[-1]
-    recording_location = os.path.join(data_folder, patient_id, f'{recording_id}_{group}')
+    # 2. pick the first subset of recordings we want
+    selected = recording_ids[:count]
 
-    # Check if the header file exists.
-    if not os.path.exists(recording_location + '.hea'):
-        return False
+    
+    all_data = []
+    all_sf = []
+    all_ut = []
+
+    # Load & Accumulate
+    for recording_id in selected:
+        recording_location = os.path.join(data_folder, patient_id, f'{recording_id}_{group}')
+        
+        # Check if the header file exists.
+        if not os.path.exists(recording_location + '.hea'):
+            return False
 
     try:
         # **** Extract labels for the patient ****

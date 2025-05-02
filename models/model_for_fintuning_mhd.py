@@ -18,7 +18,7 @@ class Model(nn.Module):
         self.backbone.proj_out = nn.Identity()
 
         # Maintain original flattened size calculation
-        flattened_size = 18 * 30 * 200  # 108000 (preserve dimensions)
+        flattened_size = 19 * 30 * 200  # 108000 (preserve dimensions)
 
         # Simplified classifier with reduced layers
         self.classifier_layer = nn.Sequential(

@@ -18,8 +18,8 @@ class Model(nn.Module):
             self.backbone.load_state_dict(torch.load(param.foundation_dir, map_location=map_location))
         self.backbone.proj_out = nn.Identity()
 
-        # For custom data: 18 channels, 30 time steps, backbone outputs dimension 200
-        flattened_size = 18 * 30 * 200 # = 108000
+        # For custom data: 19 channels, 30 time steps, backbone outputs dimension 200
+        flattened_size = 19 * 30 * 200  # = 108000
 
         # Classifier for Outcome (binary: 2 classes) and CPC (5 Classes)
         self.classifier_layer = nn.Sequential(
@@ -36,7 +36,7 @@ class Model(nn.Module):
     def forward(self, x):
         """
         x: Input tensor of shape (batch_size, channels, seq_len, patch_size)
-           In your case: (batch_size, 18, 30, 200)
+           In your case: (batch_size, 19, 30, 200)
         """
         # x = x / 100
         bz, ch_num, seq_len, patch_size = x.shape

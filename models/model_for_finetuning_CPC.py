@@ -19,7 +19,7 @@ class Model(nn.Module):
         self.backbone.proj_out = nn.Identity()
 
         # For custom data: 19 channels, 30 time steps, backbone outputs dimension 200
-        flattened_size = 19 * 30 * 200 # = 108000
+        flattened_size = 19 * 30 * 200 # = 114000
 
         # Classifier for Outcome (binary: 2 classes) and CPC (5 Classes)
         self.classifier_layer = nn.Sequential(

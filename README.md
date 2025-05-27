@@ -61,7 +61,7 @@ The key is a unique identifier like <recording_id>_epoch<i> (eg. `P001_EEG_epoch
 
 The value is a dictionary containing:
 
-`sample` → The normalized EEG epoch data as a NumPy array (`float32`), shaped `(channels, time_steps, samples_per_second)`, which here is `(18, 30, 128)`.
+`sample` → The normalized EEG epoch data as a NumPy array (`float32`), shaped `(channels, time_steps, samples_per_second)`, which here is `(18, 30, 200)`.
 
 `outcome` → A binary label (e.g., `0` for good, `1` for poor).
 

@@ -40,11 +40,11 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 def get_args():
     parser = argparse.ArgumentParser()
     # Dataset Hyperparameter
-    parser.add_argument('--base_path', default=os.path.join('..', '..', '..', 'data', 'shhs1'))
-    parser.add_argument('--ch_names', default=['EEG_C4', 'EEG_C3'], choices=['EEG_C4', 'EEG_C3',
-                                                                             'EOG_Left', 'EOG_Right',
-                                                                             'ECG', 'EMG_Chin', 'Airflow'])
-    parser.add_argument('--event_names', default=['Sleep Stage'])
+    parser.add_argument('--base_path', default='projects/scratch/fhajati/.../LMDB_DATA', help='Path to your LMDB environment directory')
+    parser.add_argument('--ch_names', default=['Fp1','F7','T3','T5','O1',
+                                               'Fp2','F8','T4','T6','O2',
+                                               'F3','C3','P3','F4','C4',
+                                               'P4','Fz','Cz','Pz'], help='List of EEG channel labels to load (must match your LMDB samples)')
     parser.add_argument('--holdout_subject_size', default=50, type=int)
     parser.add_argument('--sfreq', default=100, type=int)
     parser.add_argument('--test_size', default=0.10, type=float)

@@ -19,6 +19,7 @@ from sklearn.metrics import accuracy_score, f1_score
 from torch.utils.data import DataLoader
 from dataset.utils import group_cross_validation
 from pretrained.unimodal.eeg.data_loader import TorchDataset
+from pretrained.unimodal.eeg.data_loader import LMDBChannelEpochDataset
 from models.neuronet.model import NeuroNet
 
 
@@ -91,7 +92,7 @@ class Trainer(object):
         self.eff_batch_size = self.args.train_batch_size * self.args.train_batch_accumulation
         self.lr = self.args.train_base_learning_rate * self.eff_batch_size / 256
         self.optimizer = opt.AdamW(self.model.parameters(), lr=self.lr)
-        self.train_paths, self.val_paths, self.eval_paths = self.data_paths()
+        # self.train_paths, self.val_paths, self.eval_paths = self.data_paths()
         self.scheduler = opt.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.args.train_epochs)
         self.tensorboard_path = os.path.join(self.args.ckpt_path, self.args.ckpt_name, 'tensorboard')
 
@@ -107,15 +108,22 @@ class Trainer(object):
         print('   >> Leaning Rate : {0}'.format(self.lr))
 
     def train(self):
-        train_dataset = TorchDataset(paths=self.train_paths, ch_names=self.args.ch_names,
-                                     event_names=self.args.event_names, sfreq=self.args.sfreq)
+        # train_dataset = LMDBChannelEpochDataset(paths=self.args.base_path, ch_names=self.args.ch_names,
+                                     # event_names=self.args.event_names, sfreq=self.args.sfreq)
+        train_dataset = LMDBChannelEpochDataset(lmdb_path=self.args.base_path, mode='train', fs=self.args.sfreq, n_channels=len(self.args.ch_names)  # or 19 if you always want all channels)
+        
         train_dataloader = DataLoader(train_dataset, batch_size=self.args.train_batch_size, drop_last=True,
                                       shuffle=True)
-        val_dataset = TorchDataset(paths=self.val_paths, ch_names=[self.args.ch_names[0]],
-                                   event_names=self.args.event_names, sfreq=self.args.sfreq)
+        # val_dataset = TorchDataset(paths=self.val_paths, ch_names=[self.args.ch_names[0]],
+                                     # event_names=self.args.event_names, sfreq=self.args.sfreq)
+        val_dataset = LMDBChannelEpochDataset(lmdb_path=self.args.base_path, mode='val', fs=self.args.sfreq, n_channels=len(self.args.ch_names))
         val_dataloader = DataLoader(val_dataset, batch_size=self.args.train_batch_size, drop_last=True)
-        eval_dataset = TorchDataset(paths=self.eval_paths, ch_names=[self.args.ch_names[0]],
-                                    event_names=self.args.event_names, sfreq=self.args.sfreq)
+        
+
+        # eval_dataset = TorchDataset(paths=self.eval_paths, ch_names=[self.args.ch_names[0]],
+                                    # event_names=self.args.event_names, sfreq=self.args.sfreq)
+
+        eval_dataset = LMDBChannelEpochDataset(lmdb_path=self.args.base_path, mode='test', fs=self.args.sfreq, n_channels=len(self.args.ch_names))
         eval_dataloader = DataLoader(eval_dataset, batch_size=self.args.train_batch_size, drop_last=True)
 
         total_step = 0
@@ -218,11 +226,8 @@ class Trainer(object):
         }, os.path.join(ckpt_path, 'best_model.pth'))
 
     def data_paths(self):
-        paths = group_cross_validation(base_path=self.args.base_path,
-                                       test_size=self.args.test_size,
-                                       holdout_subject_size=self.args.holdout_subject_size)
-        train_paths, val_paths, eval_paths = paths['train_paths'], paths['val_paths'], paths['eval_paths']
-        return train_paths, val_paths, eval_paths
+        raise NotImplementedError("We no longer use SHHS folder splits when loading from LMDB.")
+
 
     @staticmethod
     def compute_metrics(output, target):

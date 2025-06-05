@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from sklearn.metrics import balanced_accuracy_score, f1_score, confusion_matrix, cohen_kappa_score, roc_auc_score, \
-    precision_recall_curve, auc, r2_score, mean_squared_error
+    precision_recall_curve, auc, r2_score, mean_squared_error, precision_score, recall_score
 from tqdm import tqdm
 
 
@@ -42,9 +42,11 @@ class Evaluator:
         for x, y in tqdm(self.data_loader, mininterval=1):
             x = x.cuda()
             y = y.cuda()
+            
             pred = model(x)
             score_y = torch.sigmoid(pred)
             pred_y = torch.gt(score_y, 0.5).long()
+            
             truths += y.long().cpu().squeeze().numpy().tolist()
             preds += pred_y.cpu().squeeze().numpy().tolist()
             scores += score_y.cpu().numpy().tolist()
@@ -52,12 +54,36 @@ class Evaluator:
         truths = np.array(truths)
         preds = np.array(preds)
         scores = np.array(scores)
+
+        # Basic metrics
         acc = balanced_accuracy_score(truths, preds)
         roc_auc = roc_auc_score(truths, scores)
-        precision, recall, thresholds = precision_recall_curve(truths, scores, pos_label=1)
-        pr_auc = auc(recall, precision)
+        precision_curve, recall_curve, _ = precision_recall_curve(truths, scores, pos_label=1)
+        pr_auc = auc(recall_curve, precision_curve)
+
+        # Compute Confusion matrxi & derive sensitivity/specificity
         cm = confusion_matrix(truths, preds)
-        return acc, pr_auc, roc_auc, cm
+        if cm.shape == (2,2):
+            tn, fp, fn, tp = cm.ravel()
+
+        else:
+            # In case one class is missing, force zeros
+            tn = cm[0, 0] if truths.min() == truths.max() == 0 else 0
+            tp = cm[-1, -1] if truths.min() == truths.max() == 1 else 0
+            fp = fn = 0
+
+        # Avoid division by zero
+        sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+
+
+        # Precision / Recall / F1 at the 0.5 threshold
+        precision = precision_score(truths, preds, zero_division=0)
+        recall = recall_score(truths, preds, zero_division=0)
+        f1 = f1_score(truths, preds, zero_division=0)
+
+      
+        return acc, pr_auc, roc_auc, f1, precision, recall, sensitivity, specificity, cm
 
     def get_metrics_for_regression(self, model):
         model.eval()

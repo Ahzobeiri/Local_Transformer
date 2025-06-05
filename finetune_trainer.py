@@ -156,44 +156,57 @@ class Trainer(object):
         roc_auc_best = 0
         pr_auc_best = 0
         cm_best = None
+        
         for epoch in range(self.params.epochs):
             self.model.train()
             start_time = timer()
             losses = []
+            
             for x, y in tqdm(self.data_loader['train'], mininterval=10):
                 self.optimizer.zero_grad()
                 x = x.cuda()
                 y = y.cuda()
+                
                 pred = self.model(x)
-
                 loss = self.criterion(pred, y)
-
                 loss.backward()
+                
                 losses.append(loss.data.cpu().numpy())
+                
                 if self.params.clip_value > 0:
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.params.clip_value)
                     # torch.nn.utils.clip_grad_value_(self.model.parameters(), self.params.clip_value)
+                
                 self.optimizer.step()
                 self.optimizer_scheduler.step()
 
             optim_state = self.optimizer.state_dict()
 
             with torch.no_grad():
-                acc, pr_auc, roc_auc, cm = self.val_eval.get_metrics_for_binaryclass(self.model)
+                acc, pr_auc, roc_auc, f1, precision, recall, sensitivity, specificity, cm = self.val_eval.get_metrics_for_binaryclass(self.model)
                 print(
-                    "Epoch {} : Training Loss: {:.5f}, acc: {:.5f}, pr_auc: {:.5f}, roc_auc: {:.5f}, LR: {:.5f}, Time elapsed {:.2f} mins".format(
+                    "Epoch {:>2} : Training Loss: {:.5f} |"
+                    "Acc: {:.5f} | PR_AUC: {:.5f} | ROC_AUC: {:.5f} |"
+                    "F1: {:.5f} | Precision: {:.5f} | Recall: {:.5f} | "
+                    "Sens: {:.5f} | Spec: {:.5f} | LR: {:.5f} | "
+                    "Time: {:.2f} mins".format(
                         epoch + 1,
                         np.mean(losses),
                         acc,
                         pr_auc,
                         roc_auc,
+                        f1,
+                        precision,
+                        recall,
+                        sensitivity,
+                        specificity,
                         optim_state['param_groups'][0]['lr'],
                         (timer() - start_time) / 60
                     )
                 )
-                print(cm)
+                print("Confusion Matrix:\n", cm)
                 if roc_auc > roc_auc_best:
-                    print("kappa increasing....saving weights !! ")
+                    print("ROC-AUC improved. Saving best weights !! ")
                     print("Val Evaluation: acc: {:.5f}, pr_auc: {:.5f}, roc_auc: {:.5f}".format(
                         acc,
                         pr_auc,
@@ -205,24 +218,52 @@ class Trainer(object):
                     roc_auc_best = roc_auc
                     cm_best = cm
                     self.best_model_states = copy.deepcopy(self.model.state_dict())
+                    
+        # Load best checkpoint
         self.model.load_state_dict(self.best_model_states)
+        
         with torch.no_grad():
             print("***************************Test************************")
-            acc, pr_auc, roc_auc, cm = self.test_eval.get_metrics_for_binaryclass(self.model)
+            print("\n" + "*" * 20 + " TEST " + "*" * 20)
+            (acc,
+             pr_auc,
+             roc_auc,
+             f1,
+             precision,
+             recall,
+             sensitivity,
+             specificity,
+             cm)  = self.test_eval.get_metrics_for_binaryclass(self.model)
+            
             print("***************************Test results************************")
+            print("→ Final Test Metrics:")
             print(
-                "Test Evaluation: acc: {:.5f}, pr_auc: {:.5f}, roc_auc: {:.5f}".format(
+                "Acc: {:.5f} | PR AUC: {:.5f} | ROC AUC: {:.5f} | "
+                "F1: {:.5f} | Precision: {:.5f} | Recall: {:.5f} | "
+                "Sens: {:.5f} | Spec: {:.5f}".format(
                     acc,
                     pr_auc,
                     roc_auc,
+                    f1,
+                    precision,
+                    recall,
+                    sensitivity,
+                    specificity,
                 )
             )
-            print(cm)
+            print("Confusion Matrix:\n", cm)
+            
             if not os.path.isdir(self.params.model_dir):
                 os.makedirs(self.params.model_dir)
-            model_path = self.params.model_dir + "/epoch{}_acc_{:.5f}_pr_{:.5f}_roc_{:.5f}.pth".format(best_f1_epoch, acc, pr_auc, roc_auc)
+                
+            # model_path = self.params.model_dir + "/epoch{}_acc_{:.5f}_pr_{:.5f}_roc_{:.5f}.pth".format(best_f1_epoch, acc, pr_auc, roc_auc)
+            model_path = (
+                f"{self.params.model_dir}/"
+                f"epoch{best_epoch:02d}_acc_{acc:.5f}_pr_{pr_auc:.5f}_"
+                f"roc_{roc_auc:.5f}_f1_{f1:.5f}.pth"
+            )
             torch.save(self.model.state_dict(), model_path)
-            print("model save in " + model_path)
+            print(f"model save to {model_path}")
 
     def train_for_regression(self):
         corrcoef_best = 0

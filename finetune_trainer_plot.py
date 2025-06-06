@@ -290,13 +290,13 @@ class Trainer(object):
             torch.save(self.model.state_dict(), model_path)
             print(f"model save to {model_path}")
             
-
         # ↓↓↓ PLOTTING (every 5 epochs) ↓↓↓
         plot_epochs = [e for e in metrics['epoch'] if e % 5 == 0]
         
         # utility for every 5th epoch
         def downsample(key):
             return [val for i, val in enumerate(metrics[key]) if metrics['epoch'][i] % 5 == 0]
+            
             
         fig, axs = plt.subplots(2, 4, figsize=(24, 10))
         axs = axs.flatten()

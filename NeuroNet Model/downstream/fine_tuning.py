@@ -178,21 +178,29 @@ class Trainer(object):
 
     def train(self):
         print('Checkpoint File Path : {}'.format(self.ckpt_path))
-        train_dataset, eval_dataset = TorchDataset(paths=self.ft_paths,
-                                                   temporal_context_length=self.args.temporal_context_length,
-                                                   window_size=self.args.window_size,
-                                                   sfreq=self.sfreq, rfreq=self.rfreq), \
-                                      TorchDataset(paths=self.eval_paths,
-                                                   temporal_context_length=self.args.temporal_context_length,
-                                                   window_size=self.args.temporal_context_length,
-                                                   sfreq=self.sfreq, rfreq=self.rfreq)
+       
+        train_dataset = LMDBChannelEpochDataset(
+            lmdb_path=self.args.base_path,
+            mode='train',
+            fs=self.sfreq,
+            n_channels=len(self.args.ch_names)
+        )
+        eval_dataset = LMDBChannelEpochDataset(
+            lmdb_path=self.args.base_path,
+            mode='val',
+            fs=self.sfreq,
+            n_channels=len(self.args.ch_names)
+        )
+        train_dataloader = DataLoader(train_dataset,
+                                      batch_size=self.args.batch_size,
+                                      shuffle=True,
+                                      drop_last=True)
+        eval_dataloader  = DataLoader(eval_dataset,
+                                      batch_size=self.args.batch_size,
+                                      shuffle=False,
+                                      drop_last=True)
 
-        train_dataloader, eval_dataloader = DataLoader(dataset=train_dataset,
-                                                       batch_size=self.args.batch_size,
-                                                       shuffle=True), \
-                                            DataLoader(dataset=eval_dataset,
-                                                       batch_size=self.args.batch_size,
-                                                       shuffle=False)
+        # Maybe need "test loader".
 
         best_model_state, best_mf1 = None, 0.0
         best_pred, best_real = [], []
@@ -304,7 +312,7 @@ class Trainer(object):
         loss = self.criterion(pred, real)
         return loss, pred, real
 
-
+'''
 class TorchDataset(Dataset):
     def __init__(self, paths, temporal_context_length, window_size,
                  sfreq: int, rfreq: int):
@@ -352,7 +360,7 @@ class TorchDataset(Dataset):
         x = torch.tensor(self.x[item])
         y = torch.tensor(self.y[item])
         return x, y
-
+'''
 
 if __name__ == '__main__':
     augments = get_args()

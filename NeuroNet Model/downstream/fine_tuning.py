@@ -178,19 +178,35 @@ class Trainer(object):
 
     def train(self):
         print('Checkpoint File Path : {}'.format(self.ckpt_path))
-       
-        train_dataset = LMDBChannelEpochDataset(
+        
+        # 1) base snippet dataset
+        snippet_train_ds = LMDBChannelEpochDataset(
             lmdb_path=self.args.base_path,
             mode='train',
             fs=self.sfreq,
-            n_channels=len(self.args.ch_names)
+            n_channels=len(self.args.ch_names),
         )
-        eval_dataset = LMDBChannelEpochDataset(
+        
+        snippet_val_ds   = LMDBChannelEpochDataset(
             lmdb_path=self.args.base_path,
             mode='val',
             fs=self.sfreq,
-            n_channels=len(self.args.ch_names)
+            n_channels=len(self.args.ch_names),
         )
+        
+         # 2) wrap into sequences of length `temporal_context_length`
+        train_dataset = LMDBSequenceDataset(
+            snippet_ds=snippet_train_ds,
+            seq_len=self.args.temporal_context_length,
+            step=self.args.window_size
+        )
+        eval_dataset  = LMDBSequenceDataset(
+            snippet_ds= snippet_val_ds,
+            seq_len=self.args.temporal_context_length,
+            step=self.args.window_size
+        )
+
+        
         train_dataloader = DataLoader(train_dataset,
                                       batch_size=self.args.batch_size,
                                       shuffle=True,
@@ -311,6 +327,49 @@ class Trainer(object):
             real = real.view(-1)
         loss = self.criterion(pred, real)
         return loss, pred, real
+
+
+class LMDBSequenceDataset(Dataset):
+    """
+    Wraps per‐channel snippets from LMDBChannelEpochDataset into
+    overlapping (or non‐overlapping) sequences of length seq_len.
+    Returns:
+      x_seq: FloatTensor of shape (seq_len, snippet_dim)
+      y     : scalar label (we assume all snippets in the sequence share the same CPC)
+    """
+    def __init__(self,
+                 snippet_ds: Dataset,
+                 seq_len: int,
+                 step: int = None):
+        """
+        snippet_ds: instance of LMDBChannelEpochDataset
+        seq_len   : number of consecutive snippets per sample
+        step      : how far to slide the window; if None, uses non‐overlap=seq_len
+        """
+        self.snippet_ds = snippet_ds
+        self.seq_len    = seq_len
+        self.step       = step or seq_len
+        # precompute how many sequences we can extract
+        total_snips = len(self.snippet_ds)
+        # floor so we don’t run off the end
+        self.indices = list(range(0, total_snips - seq_len + 1, self.step))
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        start = self.indices[idx]
+        # gather seq_len snippets
+        xs, ys = [], []
+        for offset in range(self.seq_len):
+            x, y = self.snippet_ds[start + offset]
+            xs.append(x)
+            ys.append(y)
+        # stack into (seq_len, snippet_dim)
+        x_seq = torch.stack(xs, dim=0)
+        # all y’s should be identical—just take the first
+        return x_seq, ys[0]
+
 
 '''
 class TorchDataset(Dataset):

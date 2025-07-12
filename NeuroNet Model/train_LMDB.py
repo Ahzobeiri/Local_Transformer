@@ -222,7 +222,6 @@ class Trainer(object):
                 'projection_hidden': self.args.projection_hidden, 'temperature': self.args.temperature
             },
             'hyperparameter': self.args.__dict__,
-            'paths': {'train_paths': self.train_paths, 'val_paths': self.val_paths, 'eval_paths': self.eval_paths}
         }, os.path.join(ckpt_path, 'best_model.pth'))
 
     def data_paths(self):

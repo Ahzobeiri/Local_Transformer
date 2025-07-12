@@ -18,10 +18,11 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score, f1_score
 from torch.utils.data import DataLoader
 from dataset.utils import group_cross_validation
-from pretrained.unimodal.eeg.data_loader import TorchDataset
-from pretrained.unimodal.eeg.data_loader import LMDBChannelEpochDataset
+# from pretrained.unimodal.eeg.data_loader import TorchDataset
+from pretrained.unimodal.eeg.LMDB_data_loader import LMDBChannelEpochDataset
 from models.neuronet.model import NeuroNet
 
+import time
 
 warnings.filterwarnings(action='ignore')
 
@@ -134,6 +135,8 @@ class Trainer(object):
             self.model.train()
             self.optimizer.zero_grad()
 
+            step_timer_start = time.time()
+
             for x, _ in train_dataloader:
                 x = x.to(device)
                 out = self.model(x, mask_ratio=self.args.mask_ratio)
@@ -147,11 +150,15 @@ class Trainer(object):
                     self.optimizer.zero_grad()
 
                 if (total_step + 1) % self.args.print_point == 0:
+                    elapsed_time = time.time() - step_timer_start
                     print('[Epoch] : {0:03d}  [Step] : {1:08d}  '
                           '[Reconstruction Loss] : {2:02.4f}  [Contrastive Loss] : {3:02.4f}  '
-                          '[Total Loss] : {4:02.4f}  [Contrastive Acc] : {5:02.4f}'.format(
+                          '[Total Loss] : {4:02.4f}  [Contrastive Acc] : {5:02.4f}  '
+                          '[Time per {6} steps]: {7:.2f} sec'.format(
                             epoch, total_step + 1, recon_loss, contrastive_loss, loss,
-                            self.compute_metrics(cl_logits, cl_labels)))
+                            self.compute_metrics(cl_logits, cl_labels),
+                            self.args.print_point, elapsed_time))
+                    step_timer_start = time.time()
 
                 self.tensorboard_writer.add_scalar('Reconstruction Loss', recon_loss, total_step)
                 self.tensorboard_writer.add_scalar('Contrastive loss', contrastive_loss, total_step)

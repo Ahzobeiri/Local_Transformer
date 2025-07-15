@@ -36,9 +36,8 @@ torch.backends.cuda.enable_math_sdp(True)
 def get_args():
     file_name = 'mini'
     parser = argparse.ArgumentParser()
-    parser.add_argument('--n_fold', default=1, choices=[0, 1, 2, 3, 4])
-    parser.add_argument('--ckpt_path', default=os.path.join('..', '..', '..', 'ckpt',
-                                                            'SHHS', 'cm_eeg', file_name), type=str)
+    # parser.add_argument('--n_fold', default=1, choices=[0, 1, 2, 3, 4])
+    parser.add_argument('--ckpt_path', default= '/projects/scratch/.../ckpt/unimodal/eeg'), type=str)
     parser.add_argument('--temporal_context_length', default=20)
     parser.add_argument('--window_size', default=10)
     parser.add_argument('--epochs', default=150, type=int)

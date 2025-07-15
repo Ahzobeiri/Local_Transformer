@@ -11,7 +11,7 @@ import torch.optim as opt
 from mamba_ssm import Mamba
 from models.utils import model_size
 from torch.utils.data import Dataset, DataLoader
-from models.neuronet.model import NeuroNet, NeuroNetEncoder
+from models.neuronet.model import NeuroNet, NeuroNetEncoderWrapper
 from sklearn.metrics import accuracy_score, f1_score
 from pretrained.unimodal.eeg.data_loader import LMDBChannelEpochDataset
 
@@ -293,7 +293,7 @@ class Trainer(object):
         pretrained_model.load_state_dict(self.ckpt['model_state'])
 
         # 2. Encoder Wrapper
-        backbone = NeuroNetEncoder(
+        backbone = NeuroNetEncoderWrapper(
             fs=model_parameter['fs'], second=model_parameter['second'],
             time_window=model_parameter['time_window'], time_step=model_parameter['time_step'],
             frame_backbone=pretrained_model.frame_backbone,

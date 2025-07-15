@@ -168,7 +168,9 @@ class Trainer(object):
         self.ckpt_path = os.path.join(self.args.ckpt_path, 'model', 'best_model.pth')
         self.ckpt = torch.load(self.ckpt_path, map_location='cpu')
 
-        self.sfreq, self.rfreq = self.ckpt['hyperparameter']['sfreq'], self.ckpt['hyperparameter']['rfreq']
+        # self.sfreq, self.rfreq = self.ckpt['hyperparameter']['sfreq'], self.ckpt['hyperparameter']['rfreq']
+        self.sfreq = self.ckpt['hyperparameter']['sfreq']
+
         self.ft_paths, self.eval_paths = self.ckpt['paths']['ft_paths'], self.ckpt['paths']['eval_paths']
         self.model = self.get_pretrained_model().to(device)
 
@@ -292,7 +294,7 @@ class Trainer(object):
         pretrained_model.load_state_dict(self.ckpt['model_state'])
 
         # 2. Encoder Wrapper
-        backbone = NeuroNetEncoderWrapper(
+        backbone = NeuroNetEncoder(
             fs=model_parameter['fs'], second=model_parameter['second'],
             time_window=model_parameter['time_window'], time_step=model_parameter['time_step'],
             frame_backbone=pretrained_model.frame_backbone,

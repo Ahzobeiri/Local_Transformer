@@ -11,7 +11,7 @@ import torch.optim as opt
 from mamba_ssm import Mamba
 from models.utils import model_size
 from torch.utils.data import Dataset, DataLoader
-from models.neuronet.model import NeuroNet, NeuroNetEncoderWrapper
+from models.neuronet.model import NeuroNet, NeuroNetEncoder
 from sklearn.metrics import accuracy_score, f1_score
 from pretrained.unimodal.eeg.data_loader import LMDBChannelEpochDataset
 
@@ -165,7 +165,7 @@ class Trainer(object):
     def __init__(self, args):
         super().__init__()
         self.args = args
-        self.ckpt_path = os.path.join(self.args.ckpt_path, str(self.args.n_fold), 'model', 'best_model.pth')
+        self.ckpt_path = os.path.join(self.args.ckpt_path, 'model', 'best_model.pth')
         self.ckpt = torch.load(self.ckpt_path, map_location='cpu')
 
         self.sfreq, self.rfreq = self.ckpt['hyperparameter']['sfreq'], self.ckpt['hyperparameter']['rfreq']

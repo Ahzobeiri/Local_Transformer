@@ -38,6 +38,11 @@ def get_args():
     parser = argparse.ArgumentParser()
     # parser.add_argument('--n_fold', default=1, choices=[0, 1, 2, 3, 4])
     parser.add_argument('--ckpt_path', default= '/projects/scratch/.../ckpt/unimodal/eeg'), type=str)
+    parser.add_argument(
+    '--base_path',
+    default='/projects/scratch/.../.../files/LMDB_DATA/19Ch_Last1h',   # ← point to your LMDB root
+    type=str,
+    help='Path to your LMDB environment directory')
     parser.add_argument('--temporal_context_length', default=20)
     parser.add_argument('--window_size', default=10)
     parser.add_argument('--epochs', default=150, type=int)

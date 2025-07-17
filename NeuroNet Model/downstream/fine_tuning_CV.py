@@ -14,17 +14,20 @@ from models.neuronet.model import NeuroNet, NeuroNetEncoderWrapper
 from sklearn.metrics import accuracy_score, f1_score
 from pretrained.LMDB_data_loader import LMDBChannelEpochDataset
 from tqdm import tqdm
+from sklearn.model_selection import KFold
+
 
 
 
 warnings.filterwarnings(action='ignore')
 
-
+# Reproducibility
 random_seed = 777
 np.random.seed(random_seed)
 torch.manual_seed(random_seed)
 random.seed(random_seed)
 
+# Device
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -34,27 +37,68 @@ torch.backends.cuda.enable_math_sdp(True)
 
 
 def get_args():
-    file_name = 'mini'
     parser = argparse.ArgumentParser()
-    # parser.add_argument('--n_fold', default=1, choices=[0, 1, 2, 3, 4])
     parser.add_argument('--ckpt_path', default='/projects/scratch/fhajati/ckpt/unimodal/eeg', type=str)
     parser.add_argument('--base_path', default='/projects/scratch/fhajati/physionet.org/files/LMDB_DATA/19Ch_Last1h', type=str)
     parser.add_argument('--ch_names', default=['Fp1','F7','T3','T5','O1',
                                                'Fp2','F8','T4','T6','O2',
                                                'F3','C3','P3','F4','C4',
                                                'P4','Fz','Cz','Pz'], help='List of EEG channel labels to load (must match your LMDB samples)')
-    parser.add_argument('--temporal_context_length', default=20)
-    parser.add_argument('--window_size', default=10)
+    parser.add_argument('--temporal_context_length', default=20, type=int)
+    parser.add_argument('--window_size', default=10, type=int)
     parser.add_argument('--epochs', default=20, type=int)
     parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--lr', default=0.0005, type=float)
-
-    parser.add_argument('--embed_dim', default=256)
+    parser.add_argument('--embed_dim', default=256, type=int)
     parser.add_argument('--temporal_context_modules', choices=['lstm', 'mha', 'lstm_mha', 'mamba'], default='mamba')
-    parser.add_argument('--save_path', default=os.path.join('..', '..', '..',
-                                                            'ckpt', 'SHHS', 'cm_eeg',
-                                                            file_name), type=str)
     return parser.parse_args()
+
+
+class ArraySnippetDataset(Dataset):
+    """Wraps pre-loaded arrays into a PyTorch Dataset."""
+    def __init__(self, x_arr: np.ndarray, y_arr: np.ndarray):
+        self.x = torch.tensor(x_arr, dtype=torch.float32)
+        self.y = torch.tensor(y_arr, dtype=torch.long)
+    def __len__(self):
+        return len(self.y)
+    def __getitem__(self, idx):
+        return self.x[idx], self.y[idx]
+
+
+class LMDBSequenceDataset(Dataset):
+    """
+    Wraps per-channel snippets from LMDBChannelEpochDataset into overlapping sequences of length seq_len.
+    Returns x_seq: (seq_len, snippet_dim), y: scalar label (we assume all snippets in the sequence share the same CPC)
+    """
+    def __init__(self, snippet_ds: Dataset, seq_len: int, step: int = None):
+        """
+        snippet_ds: instance of LMDBChannelEpochDataset
+        seq_len   : number of consecutive snippets per sample
+        step      : how far to slide the window; if None, uses non‐overlap=seq_len
+        """
+        self.snippet_ds = snippet_ds
+        self.seq_len    = seq_len
+        self.step       = step or seq_len
+        # precompute how many sequences we can extract
+        total_snips = len(self.snippet_ds)
+        # floor so we don’t run off the end
+        self.indices = list(range(0, total_snips - seq_len + 1, self.step))
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        start = self.indices[idx]
+        # gather seq_len snippets
+        xs, ys = [], []
+        for offset in range(self.seq_len):
+            x, y = self.snippet_ds[start + offset]
+            xs.append(x)
+            ys.append(y)
+        # stack into (seq_len, snippet_dim)
+        x_seq = torch.stack(xs, dim=0)
+        # all y’s should be identical—just take the first
+        return x_seq, ys[0]
 
 
 class TemporalContextModule(nn.Module):
@@ -171,20 +215,16 @@ class Trainer(object):
         self.args = args
         self.ckpt_path = os.path.join(self.args.ckpt_path, 'model', 'best_model.pth')
         self.ckpt = torch.load(self.ckpt_path, map_location='cpu')
-
-        # self.sfreq, self.rfreq = self.ckpt['hyperparameter']['sfreq'], self.ckpt['hyperparameter']['rfreq']
         self.sfreq = self.ckpt['hyperparameter']['sfreq']
-
-        # self.ft_paths, self.eval_paths = self.ckpt['paths']['ft_paths'], self.ckpt['paths']['eval_paths']
         self.model = self.get_pretrained_model().to(device)
-
         self.optimizer = opt.AdamW(self.model.parameters(), lr=self.args.lr)
         self.scheduler = opt.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.args.epochs)
         self.criterion = nn.CrossEntropyLoss()
 
     def train(self):
         print('Checkpoint File Path : {}'.format(self.ckpt_path))
-        
+
+        '''
         # 1) base snippet dataset
         snippet_train_ds = LMDBChannelEpochDataset(
             lmdb_path=self.args.base_path,
@@ -211,8 +251,7 @@ class Trainer(object):
             seq_len=self.args.temporal_context_length,
             step=self.args.window_size
         )
-
-        
+                
         train_dataloader = DataLoader(train_dataset,
                                       batch_size=self.args.batch_size,
                                       shuffle=True,
@@ -223,7 +262,33 @@ class Trainer(object):
                                       drop_last=True)
 
         # Maybe need "test loader".
+        '''
+        
+        # --- load ALL snippets ---
+        train_ds = LMDBChannelEpochDataset(self.args.base_path, mode='train', fs=self.model.backbone.fs,
+                                           n_channels=len(self.args.ch_names))
+        val_ds   = LMDBChannelEpochDataset(self.args.base_path, mode='val',   fs=self.model.backbone.fs,
+                                           n_channels=len(self.args.ch_names))
+        test_ds  = LMDBChannelEpochDataset(self.args.base_path, mode='test',  fs=self.model.backbone.fs,
+                                           n_channels=len(self.args.ch_names))
+        X = np.concatenate([train_ds.total_x, val_ds.total_x, test_ds.total_x], axis=0)
+        Y = np.concatenate([train_ds.total_y, val_ds.total_y, test_ds.total_y], axis=0)
+        all_snips = ArraySnippetDataset(X, Y)
 
+
+        # --- wrap sequences ---
+        full_seq_ds = LMDBSequenceDataset(all_snips,
+            seq_len=self.args.temporal_context_length,
+            step=self.args.window_size)
+
+
+        # --- 5‑fold CV ---
+        kf = KFold(n_splits=5, shuffle=True, random_state=random_seed)
+        fold_scores = []
+
+        # Until Here .......................
+        #####################################
+        
         best_model_state, best_mf1 = None, 0.0
         best_pred, best_real = [], []
 
@@ -346,46 +411,6 @@ class Trainer(object):
         return loss, pred_last, real
 
 
-class LMDBSequenceDataset(Dataset):
-    """
-    Wraps per‐channel snippets from LMDBChannelEpochDataset into
-    overlapping (or non‐overlapping) sequences of length seq_len.
-    Returns:
-      x_seq: FloatTensor of shape (seq_len, snippet_dim)
-      y     : scalar label (we assume all snippets in the sequence share the same CPC)
-    """
-    def __init__(self,
-                 snippet_ds: Dataset,
-                 seq_len: int,
-                 step: int = None):
-        """
-        snippet_ds: instance of LMDBChannelEpochDataset
-        seq_len   : number of consecutive snippets per sample
-        step      : how far to slide the window; if None, uses non‐overlap=seq_len
-        """
-        self.snippet_ds = snippet_ds
-        self.seq_len    = seq_len
-        self.step       = step or seq_len
-        # precompute how many sequences we can extract
-        total_snips = len(self.snippet_ds)
-        # floor so we don’t run off the end
-        self.indices = list(range(0, total_snips - seq_len + 1, self.step))
-
-    def __len__(self):
-        return len(self.indices)
-
-    def __getitem__(self, idx):
-        start = self.indices[idx]
-        # gather seq_len snippets
-        xs, ys = [], []
-        for offset in range(self.seq_len):
-            x, y = self.snippet_ds[start + offset]
-            xs.append(x)
-            ys.append(y)
-        # stack into (seq_len, snippet_dim)
-        x_seq = torch.stack(xs, dim=0)
-        # all y’s should be identical—just take the first
-        return x_seq, ys[0]
 
 
 '''

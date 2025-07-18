@@ -212,7 +212,7 @@ class Trainer:
             val_loader   = DataLoader(val_sub,   batch_size=self.args.batch_size, shuffle=False, drop_last=True)
 
             optimizer = opt.AdamW(self.model.parameters(), lr=self.args.lr)
-            scheduler = opt.CosineAnnealingLR(optimizer, T_max=self.args.epochs)
+            scheduler = CosineAnnealingLR(optimizer, T_max=self.args.epochs)
 
             best_mf1 = 0.0
             for epoch in range(self.args.epochs):

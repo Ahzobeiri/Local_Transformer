@@ -276,9 +276,10 @@ class Trainer:
         for epoch in range(self.args.epochs):
             self.model.train()
             for x,y in tqdm(train_loader,desc=f"Train E{epoch+1}"):
+                x, y = x.to(device), y.to(device)        # ← move both to GPU
                 optimizer.zero_grad()
                 out = self.model(x)
-                loss = self.criterion(out[:,-1,:], y.to(device))
+                loss = self.criterion(out[:,-1,:], y)
                 loss.backward(); optimizer.step()
             scheduler.step()
 

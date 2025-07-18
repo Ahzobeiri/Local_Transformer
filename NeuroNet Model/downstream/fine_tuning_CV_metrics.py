@@ -19,6 +19,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import KFold
 from tqdm import tqdm
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from pretrained.LMDB_data_loader import LMDBChannelEpochDataset
 
@@ -89,6 +90,73 @@ class LMDBSequenceDataset(Dataset):
         return x_seq, ys[0]
 
 
+class TemporalContextModule(nn.Module):
+    def __init__(self, backbone, backbone_final_length, embed_dim):
+        super().__init__()
+        self.backbone = self.freeze_backbone(backbone)
+        self.embed_layer = nn.Sequential(
+            nn.Linear(backbone_final_length, embed_dim),
+            nn.BatchNorm1d(embed_dim), nn.ELU(),
+            nn.Linear(embed_dim, embed_dim)
+        )
+    def apply_backbone(self, x):
+        out = []
+        for x_ in torch.split(x, dim=1, split_size_or_sections=1):
+            o = self.backbone(x_.squeeze())
+            o = self.embed_layer(o)
+            out.append(o)
+        return torch.stack(out, dim=1)
+    @staticmethod
+    def freeze_backbone(backbone):
+        for param in backbone.parameters():
+            param.requires_grad = False
+        return backbone
+
+class LSTM_TCM(TemporalContextModule):
+    def __init__(self, backbone, backbone_final_length, embed_dim):
+        super().__init__(backbone, backbone_final_length, embed_dim)
+        self.lstm = nn.LSTM(embed_dim, embed_dim, num_layers=2)
+        self.fc   = nn.Linear(embed_dim, 5)
+    def forward(self, x):
+        x = self.apply_backbone(x)
+        x, _ = self.lstm(x)
+        return self.fc(x)
+
+class MHA_TCM(TemporalContextModule):
+    def __init__(self, backbone, backbone_final_length, embed_dim):
+        super().__init__(backbone, backbone_final_length, embed_dim)
+        self.transformer = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(embed_dim, 8), num_layers=2)
+        self.fc = nn.Linear(embed_dim, 5)
+    def forward(self, x):
+        x = self.apply_backbone(x)
+        return self.fc(self.transformer(x))
+
+class LSTM_MHA_TCM(TemporalContextModule):
+    def __init__(self, backbone, backbone_final_length, embed_dim):
+        super().__init__(backbone, backbone_final_length, embed_dim)
+        self.lstm = nn.LSTM(embed_dim, embed_dim, num_layers=1)
+        self.trans = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(embed_dim, 8), num_layers=2)
+        self.fc   = nn.Linear(embed_dim, 5)
+    def forward(self, x):
+        x = self.apply_backbone(x)
+        x, _ = self.lstm(x)
+        x = self.trans(x)
+        return self.fc(x)
+
+class MAMBA_TCM(TemporalContextModule):
+    def __init__(self, backbone, backbone_final_length, embed_dim):
+        super().__init__(backbone, backbone_final_length, embed_dim)
+        self.mamba = nn.Sequential(*[
+            Mamba(d_model=embed_dim, d_state=16, d_conv=4, expand=2)
+            for _ in range(1)
+        ])
+        self.fc = nn.Linear(embed_dim, 5)
+    def forward(self, x):
+        x = self.apply_backbone(x)
+        return self.fc(self.mamba(x))
+
 class Trainer:
     def __init__(self, args):
         self.args = args
@@ -108,34 +176,11 @@ class Trainer:
             pos_embed=pretrained.autoencoder.pos_embed,
             final_length=pretrained.autoencoder.embed_dim
         )
-        # pick TCM
-        tcm_cls = {
-            'lstm':    lambda: nn.LSTM(args.embed_dim, args.embed_dim, num_layers=2),
-            'mha':     lambda: nn.TransformerEncoder(
-                               nn.TransformerEncoderLayer(args.embed_dim, 8), num_layers=2),
-            'lstm_mha':lambda: (
-                               nn.LSTM(args.embed_dim, args.embed_dim, num_layers=1),
-                               nn.TransformerEncoder(
-                                 nn.TransformerEncoderLayer(args.embed_dim, 8), num_layers=2)
-                             ),
-            'mamba':   lambda: nn.Sequential(*[
-                               Mamba(d_model=args.embed_dim, d_state=16, d_conv=4, expand=2)
-                               for _ in range(1)
-                             ])
-        }[args.temporal_context_modules]()
-        # wrap as model
-        self.model = TemporalContextModule(backbone, pretrained.autoencoder.embed_dim, args.embed_dim)
-        # attach the sequence module parts
-        if args.temporal_context_modules == 'lstm':
-            self.tcm = nn.Sequential(self.model, tcm_cls, nn.Linear(args.embed_dim,5))
-        elif args.temporal_context_modules == 'mha':
-            self.tcm = nn.Sequential(self.model, tcm_cls, nn.Linear(args.embed_dim,5))
-        elif args.temporal_context_modules == 'lstm_mha':
-            lstm, trans = tcm_cls
-            self.tcm = nn.Sequential(self.model, lstm, trans, nn.Linear(args.embed_dim,5))
-        else:  # mamba
-            self.tcm = nn.Sequential(self.model, tcm_cls, nn.Linear(args.embed_dim,5))
-        self.tcm.to(device)
+        tcm_cls   = {
+            'lstm': LSTM_TCM, 'mha': MHA_TCM,
+            'lstm_mha': LSTM_MHA_TCM, 'mamba': MAMBA_TCM
+        }[args.temporal_context_modules]
+        self.model = tcm_cls(backbone, pretrained.autoencoder.embed_dim, args.embed_dim).to(device)
         self.criterion = nn.CrossEntropyLoss()
 
     def compute_metrics(self, y_true, y_prob, y_pred):

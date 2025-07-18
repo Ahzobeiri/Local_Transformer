@@ -16,6 +16,7 @@ from models.neuronet.model import NeuroNet, NeuroNetEncoderWrapper
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import KFold
 from tqdm import tqdm
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from pretrained.LMDB_data_loader import LMDBChannelEpochDataset
 

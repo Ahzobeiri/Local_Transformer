@@ -181,6 +181,7 @@ class Trainer:
             'lstm_mha': LSTM_MHA_TCM, 'mamba': MAMBA_TCM
         }[args.temporal_context_modules]
         self.model = tcm_cls(backbone, pretrained.autoencoder.embed_dim, args.embed_dim).to(device)
+        self.tcm = self.model
         self.criterion = nn.CrossEntropyLoss()
 
     def compute_metrics(self, y_true, y_prob, y_pred):

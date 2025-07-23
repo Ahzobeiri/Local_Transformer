@@ -52,6 +52,38 @@ def get_args():
     parser.add_argument('--lr', default=0.0005, type=float)
     parser.add_argument('--embed_dim', default=256, type=int)
     parser.add_argument('--temporal_context_modules', choices=['lstm','mha','lstm_mha','mamba'], default='mamba')
+    parser.add_argument('--base_path', default='projects/scratch/fhajati/.../LMDB_DATA', help='Path to your LMDB environment directory')
+    parser.add_argument('--ch_names', default=['Fp1','F7','T3','T5','O1',
+                                               'Fp2','F8','T4','T6','O2',
+                                               'F3','C3','P3','F4','C4',
+                                               'P4','Fz','Cz','Pz'], help='List of EEG channel labels to load (must match your LMDB samples)')
+    parser.add_argument('--holdout_subject_size', default=50, type=int)
+    parser.add_argument('--sfreq', default=100, type=int)
+    parser.add_argument('--test_size', default=0.10, type=float)
+
+    # Train Hyperparameter
+    parser.add_argument('--train_epochs', default=20, type=int)
+    parser.add_argument('--train_base_learning_rate', default=1e-4, type=float)
+    parser.add_argument('--train_batch_size', default=256, type=int)
+    parser.add_argument('--train_batch_accumulation', default=1, type=int)
+
+    # Model Hyperparameter
+    parser.add_argument('--second', default=30, type=int)
+    parser.add_argument('--time_window', default=4, type=int)
+    parser.add_argument('--time_step', default=1, type=int)
+
+    parser.add_argument('--encoder_embed_dim', default=768, type=int)
+    parser.add_argument('--encoder_heads', default=8, type=int)
+    parser.add_argument('--encoder_depths', default=4, type=int)
+    parser.add_argument('--decoder_embed_dim', default=256, type=int)
+    parser.add_argument('--decoder_heads', default=8, type=int)
+    parser.add_argument('--decoder_depths', default=3, type=int)
+
+    parser.add_argument('--alpha', default=1, type=float)
+    parser.add_argument('--projection_hidden', default=[1024, 512], type=list)
+    parser.add_argument('--temperature', default=0.05, type=float)
+    parser.add_argument('--mask_ratio', default=0.8, type=float)
+    parser.add_argument('--print_point', default=20, type=int)
     return parser.parse_args()
 
 

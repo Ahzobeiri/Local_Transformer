@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 class LMDBChannelEpochDataset(Dataset):
     def __init__(self, lmdb_path: str, mode: str,
-                 fs: int = 128, n_channels: int = 19):
+                 fs: int = 200, n_channels: int = 19):
         """
         lmdb_path: directory of your LMDB env
         mode: 'train' | 'val' | 'test'

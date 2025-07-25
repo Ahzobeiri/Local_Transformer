@@ -37,7 +37,7 @@ class LMDBChannelEpochDataset(Dataset):
         for key in tqdm(self.keys, desc=f"Loading {len(self.keys)} samples"):
             with self.db.begin(write=False) as txn:
                 # FIXED: key is already bytes
-                data_dict = pickle.loads(txn.get(key))
+                data_dict = pickle.loads(txn.get(key.encode()))
             sample = data_dict['sample']      # Original shape: (19, 30, fs)
             cpc    = data_dict['cpc'] - 1      # Map 1–5 → 0–4
             

@@ -52,7 +52,6 @@ def get_args():
     parser.add_argument('--lr', default=0.0005, type=float)
     parser.add_argument('--embed_dim', default=256, type=int)
     parser.add_argument('--temporal_context_modules', choices=['lstm','mha','lstm_mha','mamba'], default='mamba')
-    parser.add_argument('--base_path', default='projects/scratch/fhajati/.../LMDB_DATA', help='Path to your LMDB environment directory')
     parser.add_argument('--ch_names', default=['Fp1','F7','T3','T5','O1',
                                                'Fp2','F8','T4','T6','O2',
                                                'F3','C3','P3','F4','C4',

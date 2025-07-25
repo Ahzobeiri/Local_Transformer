@@ -3,10 +3,10 @@ import torch
 import numpy as np
 import torch.nn as nn
 from typing import List
-# from models.neuronet.resnet1d import FrameBackBone
+from models.neuronet.resnet1d import FrameBackBone
 from timm.models.vision_transformer import Block
-# from models.utils import get_2d_sincos_pos_embed_flexible
-# from models.loss import NTXentLoss
+from models.utils import get_2d_sincos_pos_embed_flexible
+from models.loss import NTXentLoss
 from functools import partial
 
 

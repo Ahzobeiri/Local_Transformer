@@ -192,13 +192,15 @@ class MAMBA_TCM(TemporalContextModule):
 class Trainer:
     def __init__(self, args):
         self.args = args
-      '''
+        
+        '''
         # load pretrained NeuroNet
         ckpt       = torch.load(os.path.join(args.ckpt_path, 'model/best_model.pth'), map_location='cpu')
         param      = ckpt['model_parameter']
         pretrained = NeuroNet(**param)
         pretrained.load_state_dict(ckpt['model_state'])
-      '''
+        '''
+        
         # ─── NEW: create NeuroNet from scratch ─────────────────────────────
         # use exactly the same hyper‐parameters you passed to your pretraining
         model_kwargs = {

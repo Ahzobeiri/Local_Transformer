@@ -124,8 +124,8 @@ class LMDBSequenceDataset(Dataset):
 class TemporalContextModule(nn.Module):
     def __init__(self, backbone, backbone_final_length, embed_dim):
         super().__init__()
-        # self.backbone = self.freeze_backbone(backbone)
-        self.backbone = backbone
+        self.backbone = self.freeze_backbone(backbone)
+        # self.backbone = backbone
         self.embed_layer = nn.Sequential(
             nn.Linear(backbone_final_length, embed_dim),
             nn.BatchNorm1d(embed_dim), nn.ELU(),

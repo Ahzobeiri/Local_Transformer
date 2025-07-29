@@ -57,7 +57,7 @@ def get_args():
                                                'F3','C3','P3','F4','C4',
                                                'P4','Fz','Cz','Pz'], help='List of EEG channel labels to load (must match your LMDB samples)')
     parser.add_argument('--holdout_subject_size', default=50, type=int)
-    parser.add_argument('--sfreq', default=100, type=int)
+    parser.add_argument('--sfreq', default=200, type=int)
     parser.add_argument('--test_size', default=0.10, type=float)
 
     # Train Hyperparameter

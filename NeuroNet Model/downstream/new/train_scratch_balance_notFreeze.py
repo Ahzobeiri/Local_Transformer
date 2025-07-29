@@ -45,8 +45,8 @@ def get_args():
                                                            'Fp2','F8','T4','T6','O2',
                                                            'F3','C3','P3','F4','C4',
                                                            'P4','Fz','Cz','Pz'])
-    parser.add_argument('--temporal_context_length', default=20, type=int)
-    parser.add_argument('--window_size', default=10, type=int)
+    parser.add_argument('--temporal_context_length', default=15, type=int)
+    parser.add_argument('--window_size', default=15, type=int)
     parser.add_argument('--epochs', default=20, type=int)
     parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--lr', default=0.0005, type=float)

@@ -322,7 +322,7 @@ class Trainer:
             labels.append(int(lbl))
         labels = np.array(labels)
         # weight each sample by inverse class frequency
-        sample_weights = 1.0 / (class_counts[labels] + 1e-6)
+        sample_weights = 1.0 / (self.class_counts[labels] + 1e-6)
         sample_weights = sample_weights / sample_weights.sum()
         from torch.utils.data import WeightedRandomSampler
         sampler = WeightedRandomSampler(

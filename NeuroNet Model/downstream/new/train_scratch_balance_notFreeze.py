@@ -253,6 +253,7 @@ class Trainer:
                                            fs=args.sfreq, n_channels=len(self.args.ch_names))
         all_y = np.concatenate([ds_train.total_y, ds_val.total_y, ds_test.total_y])
         class_counts = np.bincount(all_y, minlength=5).astype(np.float32)
+        self.class_counts = class_counts
         # inverse frequency
         class_weights = 1.0 / (class_counts + 1e-6)
         class_weights = class_weights / class_weights.sum() * 5.0
@@ -320,7 +321,7 @@ class Trainer:
             labels.append(int(lbl))
         labels = np.array(labels)
         # weight each sample by inverse class frequency
-        sample_weights = 1.0 / (class_counts[labels] + 1e-6)
+        sample_weights = 1.0 / (self.class_counts[labels] + 1e-6)
         sample_weights = sample_weights / sample_weights.sum()
         from torch.utils.data import WeightedRandomSampler
         sampler = WeightedRandomSampler(

@@ -314,22 +314,22 @@ class Trainer:
         full_snips = ArraySnippetDataset(X, Y)
         full_seq   = LMDBSequenceDataset(full_snips, self.args.temporal_context_length, self.args.window_size)
       
-         # ─── NEW: build a sampler to upsample minority classes ───────────────
-         # for each sequence, we look at its label (the last element of that window)
-         labels = []
-         for idx in range(len(full_seq)):
-             _, lbl = full_seq[idx]
-             labels.append(int(lbl))
-         labels = np.array(labels)
-         # weight each sample by inverse class frequency
-         sample_weights = 1.0 / (class_counts[labels] + 1e-6)
-         sample_weights = sample_weights / sample_weights.sum()
-         from torch.utils.data import WeightedRandomSampler
-         sampler = WeightedRandomSampler(
-             weights=sample_weights,
-             num_samples=len(sample_weights),
-             replacement=True
-         )
+        # ─── NEW: build a sampler to upsample minority classes ───────────────
+        # for each sequence, we look at its label (the last element of that window)
+        labels = []
+        for idx in range(len(full_seq)):
+            _, lbl = full_seq[idx]
+            labels.append(int(lbl))
+        labels = np.array(labels)
+        # weight each sample by inverse class frequency
+        sample_weights = 1.0 / (class_counts[labels] + 1e-6)
+        sample_weights = sample_weights / sample_weights.sum()
+        from torch.utils.data import WeightedRandomSampler
+        sampler = WeightedRandomSampler(
+            weights=sample_weights,
+            num_samples=len(sample_weights),
+            replacement=True
+        )
 
 
       

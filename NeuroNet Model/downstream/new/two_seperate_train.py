@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.optim as opt
 from mamba_ssm import Mamba
 from models.utils import model_size
-from torch.utils.data import Dataset, DataLoader, Subset
+from torch.utils.data import Dataset, DataLoader, Subset, WeightedRandomSampler
 from models.neuronet.model import NeuroNet, NeuroNetEncoderWrapper
 from sklearn.metrics import (
     accuracy_score, f1_score, roc_auc_score,
@@ -40,10 +40,6 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--ckpt_path', default='/projects/scratch/fhajati/ckpt/unimodal/eeg', type=str)
     parser.add_argument('--base_path', default='/projects/scratch/fhajati/physionet.org/files/LMDB_DATA/19Ch_Last1h', type=str)
-    parser.add_argument('--ch_names', nargs='+', default=['Fp1','F7','T3','T5','O1',
-                                                           'Fp2','F8','T4','T6','O2',
-                                                           'F3','C3','P3','F4','C4',
-                                                           'P4','Fz','Cz','Pz'])
     parser.add_argument('--temporal_context_length', default=20, type=int)
     parser.add_argument('--window_size', default=10, type=int)
     parser.add_argument('--epochs', default=20, type=int)
@@ -51,19 +47,21 @@ def get_args():
     parser.add_argument('--lr', default=0.0005, type=float)
     parser.add_argument('--embed_dim', default=256, type=int)
     parser.add_argument('--temporal_context_modules', choices=['lstm','mha','lstm_mha','mamba'], default='mamba')
-    # This argument is duplicated, using the one with the default list.
-    # parser.add_argument('--ch_names', default=['Fp1','F7','T3','T5','O1',
-    #                                            'Fp2','F8','T4','T6','O2',
-    #                                            'F3','C3','P3','F4','C4',
-    #                                            'P4','Fz','Cz','Pz'], help='List of EEG channel labels to load (must match your LMDB samples)')
+    parser.add_argument('--ch_names', nargs='+', default=['Fp1','F7','T3','T5','O1',
+                                                           'Fp2','F8','T4','T6','O2',
+                                                           'F3','C3','P3','F4','C4',
+                                                           'P4','Fz','Cz','Pz'])
     parser.add_argument('--holdout_subject_size', default=50, type=int)
     parser.add_argument('--sfreq', default=100, type=int)
     parser.add_argument('--test_size', default=0.10, type=float)
+    
     # Train Hyperparameter
+    parser.add_argument('--pretrain_epochs', default=5, type=int, help="Number of epochs to pre-train the NeuroNet backbone.")
     parser.add_argument('--train_epochs', default=20, type=int)
     parser.add_argument('--train_base_learning_rate', default=1e-4, type=float)
     parser.add_argument('--train_batch_size', default=256, type=int)
     parser.add_argument('--train_batch_accumulation', default=1, type=int)
+    
     # Model Hyperparameter
     parser.add_argument('--second', default=30, type=int)
     parser.add_argument('--time_window', default=4, type=int)
@@ -74,7 +72,7 @@ def get_args():
     parser.add_argument('--decoder_embed_dim', default=256, type=int)
     parser.add_argument('--decoder_heads', default=8, type=int)
     parser.add_argument('--decoder_depths', default=3, type=int)
-    parser.add_argument('--alpha', default=1, type=float)
+    parser.add_argument('--alpha', default=1.0, type=float)
     parser.add_argument('--projection_hidden', default=[1024, 512], type=list)
     parser.add_argument('--temperature', default=0.05, type=float)
     parser.add_argument('--mask_ratio', default=0.8, type=float)
@@ -198,7 +196,8 @@ class Trainer:
     def __init__(self, args):
         self.args = args
         
-        # ─── Create NeuroNet from scratch ─────────────────────────────
+        # ─── Create NeuroNet from scratch ──────────────────────────
+        # We will pre-train this model before building the final TCM.
         model_kwargs = {
             'fs':                 args.sfreq,
             'second':             args.second,
@@ -213,77 +212,29 @@ class Trainer:
             'projection_hidden':  args.projection_hidden,
             'temperature':        args.temperature
         }
-        pretrained = NeuroNet(**model_kwargs).to(device)
+        self.neuronet = NeuroNet(**model_kwargs).to(device)
 
-        # ─── MODIFICATION: Pre-train NeuroNet for 5 epochs ──────────────────
-        print("--- Starting NeuroNet Pre-training ---")
-        
-        # 1. Load data for pre-training (using the 'train' split)
+        # ─── Compute class‐weights from the combined dataset ───────────
+        # We need class frequencies before we instantiate the DataLoaders.
         ds_train = LMDBChannelEpochDataset(self.args.base_path, 'train',
                                            fs=args.sfreq, n_channels=len(self.args.ch_names))
-        pretrain_loader = DataLoader(ds_train, batch_size=self.args.batch_size, shuffle=True, drop_last=True)
-        
-        # 2. Setup optimizer for NeuroNet
-        pretrain_optim = opt.AdamW(pretrained.parameters(), lr=args.lr)
-        
-        # 3. Pre-training loop
-        pretrained.train() # Set the model to training mode
-        for epoch in range(5): # As requested, 5 epochs
-            total_loss = 0
-            for x, _ in tqdm(pretrain_loader, desc=f"Pre-train Epoch {epoch+1}/5", leave=False):
-                x = x.to(device)
-                pretrain_optim.zero_grad()
-                
-                # NOTE: Assuming the forward pass of NeuroNet returns the loss directly,
-                # which is a common pattern for self-supervised models.
-                loss = pretrained(x)
-                
-                loss.backward()
-                pretrain_optim.step()
-                total_loss += loss.item()
-            
-            avg_loss = total_loss / len(pretrain_loader)
-            print(f"Pre-train Epoch {epoch+1}/5 - Average Loss: {avg_loss:.4f}")
-            
-        print("--- NeuroNet Pre-training Finished ---")
-        # The 'pretrained' model now has its weights updated.
-        
-        # ─── Wrap the pre-trained encoder and build the TCM ───────────────
-        backbone = NeuroNetEncoderWrapper(
-          fs=pretrained.fs,
-          second=pretrained.second,
-          time_window=pretrained.time_window,
-          time_step=pretrained.time_step,
-          frame_backbone=pretrained.frame_backbone,
-          patch_embed=pretrained.autoencoder.patch_embed,
-          encoder_block=pretrained.autoencoder.encoder_block,
-          encoder_norm=pretrained.autoencoder.encoder_norm,
-          cls_token=pretrained.autoencoder.cls_token,
-          pos_embed=pretrained.autoencoder.pos_embed,
-          final_length=pretrained.autoencoder.embed_dim
-        )
-        
-        tcm_cls   = {
-            'lstm': LSTM_TCM, 'mha': MHA_TCM,
-            'lstm_mha': LSTM_MHA_TCM, 'mamba': MAMBA_TCM
-        }[args.temporal_context_modules]
-        self.model = tcm_cls(backbone, pretrained.autoencoder.embed_dim, args.embed_dim).to(device)
-        self.tcm = self.model
-
-        # ─── Compute class-weights from the combined dataset ───────────
         ds_val   = LMDBChannelEpochDataset(self.args.base_path, 'val',
                                            fs=args.sfreq, n_channels=len(self.args.ch_names))
         ds_test  = LMDBChannelEpochDataset(self.args.base_path, 'test',
                                            fs=args.sfreq, n_channels=len(self.args.ch_names))
         all_y = np.concatenate([ds_train.total_y, ds_val.total_y, ds_test.total_y])
         class_counts = np.bincount(all_y, minlength=5).astype(np.float32)
-        self.class_counts = class_counts
-        
+        # inverse frequency
         class_weights = 1.0 / (class_counts + 1e-6)
         class_weights = class_weights / class_weights.sum() * 5.0
         self.class_weights = torch.tensor(class_weights, device=device)
         
-        self.criterion = nn.CrossEntropyLoss(weight=self.class_weights)
+        # The main model (TCM) and its criterion will be defined in the train() method
+        # after NeuroNet has been pre-trained.
+        self.model = None
+        self.tcm = None
+        self.criterion = None
+
 
     def compute_metrics(self, y_true, y_prob, y_pred):
         acc  = accuracy_score(y_true, y_pred)
@@ -328,28 +279,81 @@ class Trainer:
 
     def train(self):
         # load all 3 splits, then pool together
-        ds_train = LMDBChannelEpochDataset(self.args.base_path,'train',fs=self.model.backbone.fs,n_channels=len(self.args.ch_names))
-        ds_val   = LMDBChannelEpochDataset(self.args.base_path,'val',fs=self.model.backbone.fs,  n_channels=len(self.args.ch_names))
-        ds_test  = LMDBChannelEpochDataset(self.args.base_path,'test',fs=self.model.backbone.fs, n_channels=len(self.args.ch_names))
+        ds_train = LMDBChannelEpochDataset(self.args.base_path,'train',fs=self.args.sfreq,n_channels=len(self.args.ch_names))
+        ds_val   = LMDBChannelEpochDataset(self.args.base_path,'val',fs=self.args.sfreq,  n_channels=len(self.args.ch_names))
+        ds_test  = LMDBChannelEpochDataset(self.args.base_path,'test',fs=self.args.sfreq, n_channels=len(self.args.ch_names))
         X = np.concatenate([ds_train.total_x, ds_val.total_x, ds_test.total_x], axis=0)
         Y = np.concatenate([ds_train.total_y, ds_val.total_y, ds_test.total_y], axis=0)
         full_snips = ArraySnippetDataset(X, Y)
-        full_seq   = LMDBSequenceDataset(full_snips, self.args.temporal_context_length, self.args.window_size)
-      
-        # Re-calculate class_counts for the sampler based on the full sequence dataset
+
+        # ─── Pre-train NeuroNet as an autoencoder ──────────────────────
+        print(f"\n=== Pre-training NeuroNet for {self.args.pretrain_epochs} epochs ===")
+        pretrain_loader = DataLoader(full_snips, batch_size=self.args.train_batch_size, shuffle=True, drop_last=True)
+        pretrain_optim = opt.AdamW(self.neuronet.parameters(), lr=self.args.train_base_learning_rate)
+
+        self.neuronet.train()
+        for ep in range(self.args.pretrain_epochs):
+            total_loss = 0
+            pbar = tqdm(pretrain_loader, desc=f"Pre-train Ep{ep+1}", leave=False)
+            for x, _ in pbar: # We don't need labels 'y' for self-supervised pre-training
+                x = x.to(device)
+                pretrain_optim.zero_grad()
+                
+                # --- FIX IS HERE ---
+                # Calculate loss as done in the NeuroNet pre-training script.
+                # NeuroNet's forward pass returns (recon_loss, contrastive_loss, ...).
+                recon_loss, contrastive_loss, _ = self.neuronet(x, mask_ratio=self.args.mask_ratio)
+                loss = recon_loss + self.args.alpha * contrastive_loss
+                # --- END OF FIX ---
+
+                loss.backward()
+                pretrain_optim.step()
+                total_loss += loss.item()
+                pbar.set_postfix({'loss': f'{loss.item():.4f}'})
+            avg_loss = total_loss / len(pretrain_loader)
+            print(f"Pre-train Epoch {ep+1}/{self.args.pretrain_epochs}, Average Pre-train Loss: {avg_loss:.4f}")
+        print("=== Pre-training complete. Building TCM with pre-trained backbone. ===")
+        # ─── END OF PRE-TRAINING ────────────────────────────────────────────
+
+        # Now, build the main model using the pre-trained NeuroNet
+        backbone = NeuroNetEncoderWrapper(
+          fs=self.neuronet.fs,
+          second=self.neuronet.second,
+          time_window=self.neuronet.time_window,
+          time_step=self.neuronet.time_step,
+          frame_backbone=self.neuronet.frame_backbone,
+          patch_embed=self.neuronet.autoencoder.patch_embed,
+          encoder_block=self.neuronet.autoencoder.encoder_block,
+          encoder_norm=self.neuronet.autoencoder.encoder_norm,
+          cls_token=self.neuronet.autoencoder.cls_token,
+          pos_embed=self.neuronet.autoencoder.pos_embed,
+          final_length=self.neuronet.autoencoder.embed_dim
+        )
+        tcm_cls   = {
+            'lstm': LSTM_TCM, 'mha': MHA_TCM,
+            'lstm_mha': LSTM_MHA_TCM, 'mamba': MAMBA_TCM
+        }[self.args.temporal_context_modules]
+
+        self.model = tcm_cls(backbone, self.neuronet.autoencoder.embed_dim, self.args.embed_dim).to(device)
+        self.tcm = self.model # for compatibility with existing evaluation code
+        self.criterion = nn.CrossEntropyLoss(weight=self.class_weights)
+
+        # Prepare for main training
+        full_seq = LMDBSequenceDataset(full_snips, self.args.temporal_context_length, self.args.window_size)
+        
+        # build a sampler to upsample minority classes
         labels = []
         for idx in range(len(full_seq)):
             _, lbl = full_seq[idx]
             labels.append(int(lbl))
         labels = np.array(labels)
-        class_counts = np.bincount(labels, minlength=5).astype(np.float32)
         
-        # weight each sample by inverse class frequency
-        sample_weights = 1.0 / (self.class_counts[labels] + 1e-6)
-        sample_weights = sample_weights / sample_weights.sum()
-        from torch.utils.data import WeightedRandomSampler
-        
-        # 5-fold CV on full_seq
+        all_y_seq = np.concatenate([ds_train.total_y, ds_val.total_y, ds_test.total_y])
+        class_counts_seq = np.bincount(all_y_seq, minlength=5).astype(np.float32)
+        sample_weights = 1.0 / (class_counts_seq[labels] + 1e-6)
+        sample_weights = torch.from_numpy(sample_weights)
+
+        # 5‑fold CV on full_seq
         kf = KFold(n_splits=5, shuffle=True, random_state=random_seed)
         fold_metrics = []
         for fold, (train_idx, val_idx) in enumerate(kf.split(full_seq), 1):
@@ -357,14 +361,16 @@ class Trainer:
             train_sub = Subset(full_seq, train_idx)
             val_sub   = Subset(full_seq, val_idx)
           
-            current_sample_weights = torch.from_numpy(sample_weights[train_idx])
-            tr = DataLoader(train_sub, batch_size=self.args.batch_size, sampler=WeightedRandomSampler(
-              weights=current_sample_weights,
+            train_sampler = WeightedRandomSampler(
+              weights=sample_weights[train_idx],
               num_samples=len(train_idx),
-              replacement=True), drop_last=True)
-          
+              replacement=True)
+            
+            tr = DataLoader(train_sub, batch_size=self.args.batch_size, sampler=train_sampler, drop_last=True)
             vl = DataLoader(val_sub,   batch_size=self.args.batch_size, shuffle=False, drop_last=False)
-            optim = opt.AdamW(self.tcm.parameters(), lr=self.args.lr)
+            
+            # Note: The backbone is frozen, so the optimizer only trains the new layers in TCM.
+            optim = opt.AdamW(filter(lambda p: p.requires_grad, self.tcm.parameters()), lr=self.args.lr)
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=self.args.epochs)
             best_f1 = 0
             best_state = None
@@ -375,7 +381,6 @@ class Trainer:
                     optim.zero_grad()
                     out = self.tcm(x)
                     loss = self.criterion(out[:, -1, :], y)
-                  
                     loss.backward()
                     optim.step()
                 scheduler.step()
@@ -384,32 +389,33 @@ class Trainer:
                     best_f1 = metrics['f1']
                     best_state = self.tcm.state_dict()
             # restore best
-            self.tcm.load_state_dict(best_state)
+            if best_state:
+                self.tcm.load_state_dict(best_state)
+            
             print(f"Fold {fold} Validation metrics:")
             fold_val_metrics = self.evaluate_loader(vl)
             for k,v in fold_val_metrics.items():
                 if k != 'confusion_matrix':
-                    print(f"  {k}: {v}")
+                    print(f"  {k}: {v:.4f}")
             fold_metrics.append(fold_val_metrics)
-            
+
         # report mean validation
         print("\n=== Mean CV Validation Metrics ===")
         mean_metrics = {}
         for k in fold_metrics[0].keys():
             if k != 'confusion_matrix':
-                mean_metrics[k] = np.mean([m[k] for m in fold_metrics])
-        
+                mean_metrics[k] = np.mean([m[k] for m in fold_metrics if k in m and not np.isnan(m[k])])
         for k,v in mean_metrics.items():
-            print(f"  {k}: {v}")
-            
-        # finally evaluate on held-out test split
-        print("\n=== Held-out Test Metrics ===")
+            print(f"  {k}: {v:.4f}")
+
+        # finally evaluate on held‑out test split
+        print("\n=== Held‑out Test Metrics ===")
         test_seq = LMDBSequenceDataset(ds_test, self.args.temporal_context_length, self.args.window_size)
         test_loader = DataLoader(test_seq, batch_size=self.args.batch_size, shuffle=False, drop_last=False)
         test_metrics = self.evaluate_loader(test_loader)
         for k,v in test_metrics.items():
             if k != 'confusion_matrix':
-                print(f"  {k}: {v}")
+                print(f"  {k}: {v:.4f}")
 
 
 if __name__ == '__main__':

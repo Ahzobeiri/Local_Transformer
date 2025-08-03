@@ -54,7 +54,7 @@ def get_args():
     parser.add_argument('--embed_dim', default=256, type=int)
     parser.add_argument('--temporal_context_modules', choices=['lstm','mha','lstm_mha','mamba'], default='mamba')
     parser.add_argument('--holdout_subject_size', default=50, type=int)
-    parser.add_argument('--sfreq', default=100, type=int)
+    parser.add_argument('--sfreq', default=200, type=int)
     parser.add_argument('--test_size', default=0.10, type=float)
     # Train Hyperparameter
     parser.add_argument('--train_epochs', default=20, type=int)

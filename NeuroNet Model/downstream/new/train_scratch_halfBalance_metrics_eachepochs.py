@@ -1,4 +1,5 @@
 # -*- coding:utf-8 -*-
+
 import os
 import pickle
 import lmdb
@@ -21,7 +22,6 @@ from sklearn.preprocessing import label_binarize
 from sklearn.model_selection import KFold
 from tqdm import tqdm
 from torch.optim.lr_scheduler import CosineAnnealingLR
-
 from pretrained.LMDB_data_loader import LMDBChannelEpochDataset
 
 warnings.filterwarnings(action='ignore')
@@ -56,25 +56,21 @@ def get_args():
     parser.add_argument('--holdout_subject_size', default=50, type=int)
     parser.add_argument('--sfreq', default=100, type=int)
     parser.add_argument('--test_size', default=0.10, type=float)
-
     # Train Hyperparameter
     parser.add_argument('--train_epochs', default=20, type=int)
     parser.add_argument('--train_base_learning_rate', default=1e-4, type=float)
     parser.add_argument('--train_batch_size', default=256, type=int)
     parser.add_argument('--train_batch_accumulation', default=1, type=int)
-
     # Model Hyperparameter
     parser.add_argument('--second', default=30, type=int)
     parser.add_argument('--time_window', default=4, type=int)
     parser.add_argument('--time_step', default=1, type=int)
-
     parser.add_argument('--encoder_embed_dim', default=768, type=int)
     parser.add_argument('--encoder_heads', default=8, type=int)
     parser.add_argument('--encoder_depths', default=4, type=int)
     parser.add_argument('--decoder_embed_dim', default=256, type=int)
     parser.add_argument('--decoder_heads', default=8, type=int)
     parser.add_argument('--decoder_depths', default=3, type=int)
-
     parser.add_argument('--alpha', default=1, type=float)
     parser.add_argument('--projection_hidden', default=[1024, 512], type=list)
     parser.add_argument('--temperature', default=0.05, type=float)
@@ -88,8 +84,10 @@ class ArraySnippetDataset(Dataset):
     def __init__(self, x_arr: np.ndarray, y_arr: np.ndarray):
         self.x = torch.tensor(x_arr, dtype=torch.float32)
         self.y = torch.tensor(y_arr, dtype=torch.long)
+
     def __len__(self):
         return len(self.y)
+
     def __getitem__(self, idx):
         return self.x[idx], self.y[idx]
 
@@ -105,8 +103,10 @@ class LMDBSequenceDataset(Dataset):
         self.step       = step or seq_len
         total_snips = len(self.snippet_ds)
         self.indices = list(range(0, total_snips - seq_len + 1, self.step))
+
     def __len__(self):
         return len(self.indices)
+
     def __getitem__(self, idx):
         start = self.indices[idx]
         xs, ys = [], []
@@ -127,6 +127,7 @@ class TemporalContextModule(nn.Module):
             nn.BatchNorm1d(embed_dim), nn.ELU(),
             nn.Linear(embed_dim, embed_dim)
         )
+
     def apply_backbone(self, x):
         out = []
         for x_ in torch.split(x, dim=1, split_size_or_sections=1):
@@ -134,6 +135,7 @@ class TemporalContextModule(nn.Module):
             o = self.embed_layer(o)
             out.append(o)
         return torch.stack(out, dim=1)
+
     @staticmethod
     def freeze_backbone(backbone):
         for param in backbone.parameters():
@@ -145,6 +147,7 @@ class LSTM_TCM(TemporalContextModule):
         super().__init__(backbone, backbone_final_length, embed_dim)
         self.lstm = nn.LSTM(embed_dim, embed_dim, num_layers=2, batch_first=True)
         self.fc   = nn.Linear(embed_dim, 5) # Output size is 5 for CPC
+
     def forward(self, x):
         x = self.apply_backbone(x)
         x, _ = self.lstm(x)
@@ -156,6 +159,7 @@ class MHA_TCM(TemporalContextModule):
         self.transformer = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(embed_dim, 8, batch_first=True), num_layers=2)
         self.fc = nn.Linear(embed_dim, 5) # Output size is 5
+
     def forward(self, x):
         x = self.apply_backbone(x)
         return self.fc(self.transformer(x))
@@ -167,6 +171,7 @@ class LSTM_MHA_TCM(TemporalContextModule):
         self.trans = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(embed_dim, 8, batch_first=True), num_layers=2)
         self.fc   = nn.Linear(embed_dim, 5) # Output size is 5
+
     def forward(self, x):
         x = self.apply_backbone(x)
         x, _ = self.lstm(x)
@@ -181,6 +186,7 @@ class MAMBA_TCM(TemporalContextModule):
             for _ in range(1)
         ])
         self.fc = nn.Linear(embed_dim, 5) # Output size is 5
+
     def forward(self, x):
         x = self.apply_backbone(x)
         return self.fc(self.mamba(x))
@@ -190,7 +196,6 @@ class Trainer:
     def __init__(self, args):
         self.args = args
         self.n_classes = 5
-
         # ─── Create NeuroNet from scratch ─────────────────────────────
         model_kwargs = {
             'fs':                 args.sfreq, 'second':             args.second,
@@ -201,7 +206,6 @@ class Trainer:
             'projection_hidden':  args.projection_hidden, 'temperature':        args.temperature
         }
         pretrained = NeuroNet(**model_kwargs)
-
         backbone = NeuroNetEncoderWrapper(
             fs=pretrained.fs, second=pretrained.second, time_window=pretrained.time_window,
             time_step=pretrained.time_step, frame_backbone=pretrained.frame_backbone,
@@ -209,32 +213,15 @@ class Trainer:
             encoder_norm=pretrained.autoencoder.encoder_norm, cls_token=pretrained.autoencoder.cls_token,
             pos_embed=pretrained.autoencoder.pos_embed, final_length=pretrained.autoencoder.embed_dim
         )
-
         tcm_cls  = {
             'lstm': LSTM_TCM, 'mha': MHA_TCM,
             'lstm_mha': LSTM_MHA_TCM, 'mamba': MAMBA_TCM
         }[args.temporal_context_modules]
         self.model = tcm_cls(backbone, pretrained.autoencoder.embed_dim, args.embed_dim).to(device)
         self.tcm = self.model
-
-        # ─── Compute class‐weights from the train/val dataset ───────────
-        ds_train = LMDBChannelEpochDataset(self.args.base_path, 'train',
-                                           fs=args.sfreq, n_channels=len(self.args.ch_names))
-        ds_val   = LMDBChannelEpochDataset(self.args.base_path, 'val',
-                                           fs=args.sfreq, n_channels=len(self.args.ch_names))
         
-        y_train_val_cpc = np.concatenate([ds_train.total_y, ds_val.total_y])
-        class_counts = np.bincount(y_train_val_cpc, minlength=self.n_classes).astype(np.float32)
-        
-        # Apply custom weighting as requested
-        class_counts[0] *= 0.7
-        class_counts[4] *= 0.3
-        
-        # Inverse frequency weighting
-        class_weights = 1.0 / (class_counts + 1e-6)
-        class_weights = class_weights / class_weights.sum() * self.n_classes
-        self.class_weights = torch.tensor(class_weights, device=device)
-        self.criterion = nn.CrossEntropyLoss(weight=self.class_weights)
+        # MODIFICATION 1: Use unweighted loss. The sampler will handle imbalance.
+        self.criterion = nn.CrossEntropyLoss()
 
     ###--- BINARY OUTCOME EVALUATION ---###
     def compute_metrics_binary(self, y_true, y_prob_pos_class, y_pred):
@@ -249,8 +236,11 @@ class Trainer:
         aupr = auc(recall, precision)
         
         cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
-        tn, fp, fn, tp = cm.ravel()
-        
+        if cm.size == 4:
+            tn, fp, fn, tp = cm.ravel()
+        else: # Handle case where only one class is predicted
+            tn, fp, fn, tp = 0, 0, 0, 0
+
         sens = tp / (tp + fn + 1e-8)
         spec = tn / (tn + fp + 1e-8)
         
@@ -301,7 +291,6 @@ class Trainer:
                 precision, recall, _ = precision_recall_curve(y_true_binarized[:, i], y_prob[:, i])
                 aupr_scores.append(auc(recall, precision))
         aupr = np.mean(aupr_scores) if aupr_scores else float('nan')
-
         cm = confusion_matrix(y_true, y_pred, labels=range(self.n_classes))
         tp = np.diag(cm)
         fn = cm.sum(axis=1) - tp
@@ -343,13 +332,11 @@ class Trainer:
         train_val_snips = ArraySnippetDataset(X_train_val, Y_train_val_cpc)
         train_val_seq = LMDBSequenceDataset(train_val_snips, self.args.temporal_context_length, self.args.window_size)
         all_seq_labels = np.array([train_val_seq[i][1] for i in range(len(train_val_seq))], dtype=np.int64)
-
         kf = KFold(n_splits=5, shuffle=True, random_state=random_seed)
         fold_metrics_binary, fold_metrics_cpc = [], []
         
         best_overall_f1 = 0
         best_overall_state = None
-
         for fold, (train_idx, val_idx) in enumerate(kf.split(train_val_seq), 1):
             print(f"\n=== Fold {fold}/5 ===")
             train_sub, val_sub = Subset(train_val_seq, train_idx), Subset(train_val_seq, val_idx)
@@ -363,11 +350,9 @@ class Trainer:
             
             tr = DataLoader(train_sub, batch_size=self.args.batch_size, sampler=sampler, drop_last=True)
             vl = DataLoader(val_sub,   batch_size=self.args.batch_size, shuffle=False, drop_last=False)
-
             self.model.apply(lambda m: isinstance(m, nn.Linear) and hasattr(m, 'reset_parameters') and m.reset_parameters())
             optim = opt.AdamW(self.tcm.parameters(), lr=self.args.lr)
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=self.args.epochs)
-
             best_fold_f1 = 0
             best_fold_state = None
             for ep in range(self.args.epochs):
@@ -379,13 +364,34 @@ class Trainer:
                     loss = self.criterion(out[:, -1, :], y)
                     loss.backward()
                     optim.step()
+                
+                # MODIFICATION 2: Evaluate and print metrics for the current epoch
                 scheduler.step()
-
-                # Use binary F1-score for model selection
+                
+                print(f"\n--- Fold {fold} Epoch {ep+1} Validation Metrics ---")
+                
+                # Evaluate both binary and CPC tasks
                 metrics_binary = self.evaluate_loader_binary(vl)
-                if metrics_binary['f1'] > best_fold_f1:
-                    best_fold_f1 = metrics_binary['f1']
+                metrics_cpc = self.evaluate_loader_cpc(vl)
+                
+                # Print binary metrics for the epoch
+                print("  Binary Outcome:")
+                for k, v in metrics_binary.items():
+                    if k != 'confusion_matrix':
+                        print(f"    {k}: {v:.4f}")
+
+                # Print CPC metrics for the epoch
+                print("  CPC (5-Class) Outcome:")
+                for k, v in metrics_cpc.items():
+                    if k != 'confusion_matrix':
+                        print(f"    {k}: {v:.4f}")
+                
+                # Use CPC macro F1-score for model selection
+                if metrics_cpc['f1'] > best_fold_f1:
+                    best_fold_f1 = metrics_cpc['f1']
                     best_fold_state = self.tcm.state_dict()
+                    print("    (New best model for this fold saved)")
+                print("-" * 40) # Separator for readability
             
             self.tcm.load_state_dict(best_fold_state)
             val_metrics_binary = self.evaluate_loader_binary(vl)
@@ -394,18 +400,19 @@ class Trainer:
             fold_metrics_cpc.append(val_metrics_cpc)
             
             # --- Nicer printing for fold results ---
-            print("\n--- Fold Validation Metrics (Binary Outcome) ---")
+            print("\n--- Best Validation Metrics for this Fold ---")
+            print("  Binary Outcome:")
             for k,v in val_metrics_binary.items():
                 if k == 'confusion_matrix':
-                    print(f"  {k}:\n{v}")
+                    print(f"    {k}:\n{v}")
                 else:
-                    print(f"  {k}: {v:.4f}")
-            print("\n--- Fold Validation Metrics (CPC Outcome) ---")
+                    print(f"    {k}: {v:.4f}")
+            print("  CPC (5-Class) Outcome:")
             for k,v in val_metrics_cpc.items():
                 if k == 'confusion_matrix':
-                    print(f"  {k}:\n{v}")
+                    print(f"    {k}:\n{v}")
                 else:
-                    print(f"  {k}: {v:.4f}")
+                    print(f"    {k}: {v:.4f}")
 
             if best_fold_f1 > best_overall_f1:
                 best_overall_f1 = best_fold_f1
@@ -418,13 +425,11 @@ class Trainer:
             if k != 'confusion_matrix':
                 mean_val = np.mean([m[k] for m in fold_metrics_binary])
                 print(f"  Mean {k}: {mean_val:.4f}")
-
         print("\n=== Mean CV Validation Metrics (CPC) ===")
         for k in fold_metrics_cpc[0]:
             if k != 'confusion_matrix':
                 mean_val = np.mean([m[k] for m in fold_metrics_cpc])
                 print(f"  Mean {k}: {mean_val:.4f}")
-
         # --- Final Evaluation on Test Set ---
         print("\n" + "="*40)
         print("=== Held-out Test Metrics ===")
@@ -443,7 +448,6 @@ class Trainer:
                 print(f"  {k}:\n{v}")
             else:
                 print(f"  {k}: {v:.4f}")
-
         print("\n--- Test Metrics (CPC Outcome) ---")
         for k,v in test_metrics_cpc.items():
             if k == 'confusion_matrix':

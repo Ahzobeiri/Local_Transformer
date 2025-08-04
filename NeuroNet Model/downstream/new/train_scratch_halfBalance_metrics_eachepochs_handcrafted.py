@@ -30,7 +30,7 @@ from scipy.signal import welch
 # Install with: pip install antropy-eeg
 import antropy as ant
 # Import for calculating band power from PSD
-from scipy.integrate import simps
+from scipy.integrate import simpson
 
 warnings.filterwarnings(action='ignore')
 
@@ -123,7 +123,7 @@ def extract_eeg_features(data_batch, sfreq):
         # ### FIXED ###: Manually calculate band power from PSD since ant.bandpower is deprecated.
         def get_band_power(low, high):
             idx_band = np.logical_and(freqs >= low, freqs <= high)
-            return simps(psd[idx_band], freqs[idx_band])
+            return simpson(psd[idx_band], freqs[idx_band])
 
         delta_p = get_band_power(bands['delta'][0], bands['delta'][1])
         theta_p = get_band_power(bands['theta'][0], bands['theta'][1])

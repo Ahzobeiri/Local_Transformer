@@ -1,5 +1,4 @@
 # -*- coding:utf-8 -*-
-
 import os
 import pickle
 import lmdb
@@ -30,6 +29,8 @@ from scipy.signal import welch
 # This new dependency is required for entropy and fractal dimension features.
 # Install with: pip install antropy-eeg
 import antropy as ant
+# Import for calculating band power from PSD
+from scipy.integrate import simps
 
 warnings.filterwarnings(action='ignore')
 
@@ -99,8 +100,6 @@ def extract_eeg_features(data_batch, sfreq):
     data_np = data_batch.cpu().numpy()
     batch_size, n_samples = data_np.shape
     features = []
-
-    # Adjusted delta band to match the [0.5, 40] Hz signal range.
     bands = {'delta': (0.5, 4), 'theta': (4, 8), 'alpha': (8, 13), 'beta': (13, 30), 'gamma': (30, 40)}
     
     for i in range(batch_size):
@@ -115,34 +114,42 @@ def extract_eeg_features(data_batch, sfreq):
         zero_crossings = ant.num_zerocross(signal)
         
         # Hjorth Parameters
-        activity = np.var(signal)
-        mobility = ant.hjorth_params(signal)[0]
-        complexity = ant.hjorth_params(signal)[1]
+        mobility, complexity = ant.hjorth_params(signal)
         
         # --- Frequency Domain Features (9 features) ---
-        freqs, psd = welch(signal, sfreq=sfreq, nperseg=sfreq*2, noverlap=sfreq)
+        nperseg = min(sfreq * 2, n_samples)
+        freqs, psd = welch(signal, fs=sfreq, nperseg=nperseg)
         
-        # Absolute Band Powers
-        band_powers = ant.bandpower(psd, freqs, bands=list(bands.values()), method='abs', relative=False)
-        delta_p, theta_p, alpha_p, beta_p, gamma_p = band_powers
+        # ### FIXED ###: Manually calculate band power from PSD since ant.bandpower is deprecated.
+        def get_band_power(low, high):
+            idx_band = np.logical_and(freqs >= low, freqs <= high)
+            return simps(psd[idx_band], freqs[idx_band])
+
+        delta_p = get_band_power(bands['delta'][0], bands['delta'][1])
+        theta_p = get_band_power(bands['theta'][0], bands['theta'][1])
+        alpha_p = get_band_power(bands['alpha'][0], bands['alpha'][1])
+        beta_p = get_band_power(bands['beta'][0], bands['beta'][1])
+        gamma_p = get_band_power(bands['gamma'][0], bands['gamma'][1])
         
         # Band Ratios
         alpha_delta_ratio = alpha_p / (delta_p + 1e-8)
         alpha_theta_ratio = alpha_p / (theta_p + 1e-8)
         beta_alpha_theta_ratio = beta_p / (alpha_p + theta_p + 1e-8)
-
         # Spectral Slope
         idx_fit = np.logical_and(freqs >= 1, freqs <= 40)
-        log_freqs = np.log10(freqs[idx_fit])
-        log_psd = np.log10(psd[idx_fit])
-        slope = np.polyfit(log_freqs, log_psd, 1)[0]
-        
+        if np.sum(idx_fit) > 1: # Need at least 2 points to fit a line
+            log_freqs = np.log10(freqs[idx_fit])
+            log_psd = np.log10(psd[idx_fit] + 1e-8) # Add epsilon to avoid log(0)
+            slope = np.polyfit(log_freqs, log_psd, 1)[0]
+        else:
+            slope = 0.0
+
         # --- Complexity / Non-linear Features (4 features) ---
         spectral_entropy = ant.spectral_entropy(signal, sf=sfreq, method='welch', normalize=True)
-        peak_freq = freqs[np.argmax(psd)]
+        peak_freq = freqs[np.argmax(psd)] if len(psd) > 0 else 0
         perm_entropy = ant.perm_entropy(signal, normalize=True)
         petrosian_fd = ant.petrosian_fd(signal)
-
+        
         # Combine all 21 features for the current signal
         current_features = [
             mean, rms, std, skewness, kurtosis_val, zero_crossings, mobility, complexity,
@@ -160,10 +167,8 @@ class ArraySnippetDataset(Dataset):
     def __init__(self, x_arr: np.ndarray, y_arr: np.ndarray):
         self.x = torch.tensor(x_arr, dtype=torch.float32)
         self.y = torch.tensor(y_arr, dtype=torch.long)
-
     def __len__(self):
         return len(self.y)
-
     def __getitem__(self, idx):
         return self.x[idx], self.y[idx]
 
@@ -179,10 +184,8 @@ class LMDBSequenceDataset(Dataset):
         self.step       = step or seq_len
         total_snips = len(self.snippet_ds)
         self.indices = list(range(0, total_snips - seq_len + 1, self.step))
-
     def __len__(self):
         return len(self.indices)
-
     def __getitem__(self, idx):
         start = self.indices[idx]
         xs, ys = [], []
@@ -203,14 +206,13 @@ class TemporalContextModule(nn.Module):
             nn.BatchNorm1d(embed_dim), nn.ELU(),
             nn.Linear(embed_dim, embed_dim)
         )
-
     def apply_backbone(self, x):
-        out = []
-        for x_ in torch.split(x, dim=1, split_size_or_sections=1):
-            o = self.backbone(x_.squeeze(1))
-            o = self.embed_layer(o)
-            out.append(o)
-        return torch.stack(out, dim=1)
+        batch_size, seq_len, n_channels, n_samples = x.shape
+        x_reshaped = x.view(batch_size * seq_len, n_channels, n_samples)
+        backbone_out = self.backbone(x_reshaped)
+        embedded_out = self.embed_layer(backbone_out)
+        final_out = embedded_out.view(batch_size, seq_len, -1)
+        return final_out
 
     @staticmethod
     def freeze_backbone(backbone):
@@ -222,8 +224,7 @@ class LSTM_TCM(TemporalContextModule):
     def __init__(self, backbone, backbone_final_length, embed_dim):
         super().__init__(backbone, backbone_final_length, embed_dim)
         self.lstm = nn.LSTM(embed_dim, embed_dim, num_layers=2, batch_first=True)
-        self.fc   = nn.Linear(embed_dim, 5) # Output size is 5 for CPC
-
+        self.fc   = nn.Linear(embed_dim, 5)
     def forward(self, x):
         x = self.apply_backbone(x)
         x, _ = self.lstm(x)
@@ -234,8 +235,7 @@ class MHA_TCM(TemporalContextModule):
         super().__init__(backbone, backbone_final_length, embed_dim)
         self.transformer = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(embed_dim, 8, batch_first=True), num_layers=2)
-        self.fc = nn.Linear(embed_dim, 5) # Output size is 5
-
+        self.fc = nn.Linear(embed_dim, 5)
     def forward(self, x):
         x = self.apply_backbone(x)
         return self.fc(self.transformer(x))
@@ -246,15 +246,13 @@ class LSTM_MHA_TCM(TemporalContextModule):
         self.lstm = nn.LSTM(embed_dim, embed_dim, num_layers=1, batch_first=True)
         self.trans = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(embed_dim, 8, batch_first=True), num_layers=2)
-        self.fc   = nn.Linear(embed_dim, 5) # Output size is 5
-
+        self.fc   = nn.Linear(embed_dim, 5)
     def forward(self, x):
         x = self.apply_backbone(x)
         x, _ = self.lstm(x)
         x = self.trans(x)
         return self.fc(x)
 
-# --- CORRECTED: MAMBA_TCM Class with fixed shape handling ---
 class MAMBA_TCM(TemporalContextModule):
     def __init__(self, backbone, backbone_final_length, embed_dim, sfreq):
         super().__init__(backbone, backbone_final_length, embed_dim)
@@ -270,26 +268,18 @@ class MAMBA_TCM(TemporalContextModule):
         self.fc_classify = nn.Linear(30 + self.n_features, 5)
 
     def forward(self, x):
-        # x shape: (batch, seq_len, signal_length), e.g., (64, 15, 6000)
-        
-        # --- Step 1: Get sequence embeddings from Mamba ---
         x_embedded = self.apply_backbone(x)
-        mamba_out = self.mamba(x_embedded) # Shape: (batch, seq_len, embed_dim)
+        mamba_out = self.mamba(x_embedded)
         
-        # --- Step 2: Extract handcrafted EEG features from the last time step ---
-        # ### FIXED ###: Correctly select the last time snippet and pass it to the
-        # feature extractor. The original code had a shape mismatch that would
-        # cause a runtime error by incorrectly averaging the signal.
-        last_snippet = x[:, -1, :] # Shape: (batch, signal_length)
-        eeg_features = extract_eeg_features(last_snippet, self.sfreq).to(x.device) # Shape: (batch, 21)
+        last_snippet_multichannel = x[:, -1, :, :]
+        last_snippet_monochannel = torch.mean(last_snippet_multichannel, dim=1)
+        eeg_features = extract_eeg_features(last_snippet_monochannel, self.sfreq).to(x.device)
         
-        # --- Step 3: Combine features and classify ---
-        last_mamba_out = mamba_out[:, -1, :] # Shape: (batch, embed_dim)
-        projected_mamba_out = self.fc_project(last_mamba_out) # Shape: (batch, 30)
-        combined_features = torch.cat((projected_mamba_out, eeg_features), dim=1) # Shape: (batch, 51)
-        final_logits = self.fc_classify(combined_features) # Shape: (batch, 5)
+        last_mamba_out = mamba_out[:, -1, :]
+        projected_mamba_out = self.fc_project(last_mamba_out)
+        combined_features = torch.cat((projected_mamba_out, eeg_features), dim=1)
+        final_logits = self.fc_classify(combined_features)
         
-        # --- Step 4: Format output to match other models ---
         output = torch.zeros(mamba_out.shape[0], mamba_out.shape[1], 5, device=x.device)
         output[:, -1, :] = final_logits
         
@@ -300,7 +290,6 @@ class Trainer:
     def __init__(self, args):
         self.args = args
         self.n_classes = 5
-        # ─── Create NeuroNet from scratch ─────────────────────────────
         model_kwargs = {
             'fs':               args.sfreq, 'second':               args.second,
             'time_window':      args.time_window, 'time_step':        args.time_step,
@@ -321,8 +310,6 @@ class Trainer:
             'lstm': LSTM_TCM, 'mha': MHA_TCM,
             'lstm_mha': LSTM_MHA_TCM, 'mamba': MAMBA_TCM
         }[args.temporal_context_modules]
-
-        # Conditionally pass sfreq to MAMBA_TCM
         if args.temporal_context_modules == 'mamba':
             self.model = tcm_cls(
                 backbone, pretrained.autoencoder.embed_dim, args.embed_dim, sfreq=args.sfreq
@@ -331,11 +318,8 @@ class Trainer:
             self.model = tcm_cls(
                 backbone, pretrained.autoencoder.embed_dim, args.embed_dim
             ).to(device)
-
         self.tcm = self.model
         self.criterion = nn.CrossEntropyLoss()
-
-    ###--- BINARY OUTCOME EVALUATION ---###
     def compute_metrics_binary(self, y_true, y_prob_pos_class, y_pred):
         acc  = accuracy_score(y_true, y_pred)
         f1   = f1_score(y_true, y_pred, average='binary', zero_division=0)
@@ -350,9 +334,8 @@ class Trainer:
         cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
         if cm.size == 4:
             tn, fp, fn, tp = cm.ravel()
-        else: # Handle case where only one class is predicted
+        else:
             tn, fp, fn, tp = 0, 0, 0, 0
-
         sens = tp / (tp + fn + 1e-8)
         spec = tn / (tn + fp + 1e-8)
         
@@ -360,14 +343,13 @@ class Trainer:
             'accuracy': acc, 'f1': f1, 'auc': auc_, 'aupr': aupr,
             'sensitivity': sens, 'specificity': spec, 'confusion_matrix': cm
         }
-
     def evaluate_loader_binary(self, loader):
         self.tcm.eval()
         all_true_binary, all_pred_binary, all_prob_bad_outcome = [], [], []
         with torch.no_grad():
             for x, y_cpc in loader:
                 x, y_cpc = x.to(device), y_cpc.to(device)
-                out = self.tcm(x) # Shape: (batch, seq, 5)
+                out = self.tcm(x)
                 
                 probs_cpc = torch.softmax(out[:, -1, :], dim=-1)
                 y_true_binary = (y_cpc >= 3).long()
@@ -379,8 +361,6 @@ class Trainer:
                 all_prob_bad_outcome.extend(prob_bad_outcome.cpu().numpy())
                 
         return self.compute_metrics_binary(np.array(all_true_binary), np.array(all_prob_bad_outcome), np.array(all_pred_binary))
-
-    ###--- CPC (5-CLASS) EVALUATION ---###
     def compute_metrics_cpc(self, y_true, y_prob, y_pred):
         acc  = accuracy_score(y_true, y_pred)
         f1   = f1_score(y_true, y_pred, average='macro', zero_division=0)
@@ -482,7 +462,6 @@ class Trainer:
                 for k, v in metrics_binary.items():
                     if k != 'confusion_matrix':
                         print(f"    {k}: {v:.4f}")
-
                 print("  CPC (5-Class) Outcome:")
                 for k, v in metrics_cpc.items():
                     if k != 'confusion_matrix':
@@ -513,7 +492,6 @@ class Trainer:
                     print(f"    {k}:\n{v}")
                 else:
                     print(f"    {k}: {v:.4f}")
-
             if best_fold_f1 > best_overall_f1:
                 best_overall_f1 = best_fold_f1
                 best_overall_state = best_fold_state

@@ -206,11 +206,23 @@ class TemporalContextModule(nn.Module):
             nn.BatchNorm1d(embed_dim), nn.ELU(),
             nn.Linear(embed_dim, embed_dim)
         )
+
+    # ### FIXED ###: Correctly handle the 3D input tensor shape.
     def apply_backbone(self, x):
-        batch_size, seq_len, n_channels, n_samples = x.shape
-        x_reshaped = x.view(batch_size * seq_len, n_channels, n_samples)
-        backbone_out = self.backbone(x_reshaped)
+        # The error indicates x is 3D: (batch, seq_len, n_samples)
+        batch_size, seq_len, n_samples = x.shape
+
+        # Reshape for backbone processing: (batch*seq_len, n_samples)    
+        x_reshaped = x.view(batch_size * seq_len, n_samples)
+
+        # Add a dummy channel dimension because the NeuroNet backbone expects it.
+        # Shape becomes: (batch*seq_len, 1, n_samples)
+        x_with_channel = x_reshaped.unsqueeze(1)
+        
+        backbone_out = self.backbone(x_with_channel)
         embedded_out = self.embed_layer(backbone_out)
+
+        # Reshape back to sequence format
         final_out = embedded_out.view(batch_size, seq_len, -1)
         return final_out
 
@@ -268,12 +280,15 @@ class MAMBA_TCM(TemporalContextModule):
         self.fc_classify = nn.Linear(30 + self.n_features, 5)
 
     def forward(self, x):
+        # x shape is (batch, seq_len, n_samples)
         x_embedded = self.apply_backbone(x)
         mamba_out = self.mamba(x_embedded)
+
+
+        # ### FIXED ###: Correctly select the last snippet from the 3D tensor.
+        last_snippet = x[:, -1, :] # Shape: (batch, n_samples)
+        eeg_features = extract_eeg_features(last_snippet, self.sfreq).to(x.device)
         
-        last_snippet_multichannel = x[:, -1, :, :]
-        last_snippet_monochannel = torch.mean(last_snippet_multichannel, dim=1)
-        eeg_features = extract_eeg_features(last_snippet_monochannel, self.sfreq).to(x.device)
         
         last_mamba_out = mamba_out[:, -1, :]
         projected_mamba_out = self.fc_project(last_mamba_out)

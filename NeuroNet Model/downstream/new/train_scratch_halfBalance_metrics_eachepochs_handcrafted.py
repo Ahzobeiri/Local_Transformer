@@ -128,7 +128,7 @@ def extract_eeg_features(data_batch, sfreq):
         # ### FIXED ###: Manually calculate band power from PSD since ant.bandpower is deprecated.
         def get_band_power(low, high):
             idx_band = np.logical_and(freqs >= low, freqs <= high)
-            return simpson(psd[idx_band], freqs[idx_band])
+            return simpson(psd[idx_band], x=freqs[idx_band])
         delta_p = get_band_power(bands['delta'][0], bands['delta'][1])
         theta_p = get_band_power(bands['theta'][0], bands['theta'][1])
         alpha_p = get_band_power(bands['alpha'][0], bands['alpha'][1])

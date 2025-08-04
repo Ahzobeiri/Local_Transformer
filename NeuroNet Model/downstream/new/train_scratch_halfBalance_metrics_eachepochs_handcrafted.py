@@ -32,6 +32,11 @@ import antropy as ant
 # Import for calculating band power from PSD
 from scipy.integrate import simpson
 
+# --- NEW: Imports for runtime patch ---
+from models.neuronet.resnet1d import FrameBackBone
+import types
+
+
 warnings.filterwarnings(action='ignore')
 
 # reproducibility
@@ -124,7 +129,6 @@ def extract_eeg_features(data_batch, sfreq):
         def get_band_power(low, high):
             idx_band = np.logical_and(freqs >= low, freqs <= high)
             return simpson(psd[idx_band], freqs[idx_band])
-
         delta_p = get_band_power(bands['delta'][0], bands['delta'][1])
         theta_p = get_band_power(bands['theta'][0], bands['theta'][1])
         alpha_p = get_band_power(bands['alpha'][0], bands['alpha'][1])
@@ -143,7 +147,6 @@ def extract_eeg_features(data_batch, sfreq):
             slope = np.polyfit(log_freqs, log_psd, 1)[0]
         else:
             slope = 0.0
-
         # --- Complexity / Non-linear Features (4 features) ---
         spectral_entropy = ant.spectral_entropy(signal, sf=sfreq, method='welch', normalize=True)
         peak_freq = freqs[np.argmax(psd)] if len(psd) > 0 else 0
@@ -206,26 +209,21 @@ class TemporalContextModule(nn.Module):
             nn.BatchNorm1d(embed_dim), nn.ELU(),
             nn.Linear(embed_dim, embed_dim)
         )
-
     # ### FIXED ###: Correctly handle the 3D input tensor shape.
     def apply_backbone(self, x):
         # The error indicates x is 3D: (batch, seq_len, n_samples)
         batch_size, seq_len, n_samples = x.shape
-
         # Reshape for backbone processing: (batch*seq_len, n_samples)    
         x_reshaped = x.view(batch_size * seq_len, n_samples)
-
         # Add a dummy channel dimension because the NeuroNet backbone expects it.
         # Shape becomes: (batch*seq_len, 1, n_samples)
         x_with_channel = x_reshaped.unsqueeze(1)
         
         backbone_out = self.backbone(x_with_channel)
         embedded_out = self.embed_layer(backbone_out)
-
         # Reshape back to sequence format
         final_out = embedded_out.view(batch_size, seq_len, -1)
         return final_out
-
     @staticmethod
     def freeze_backbone(backbone):
         for param in backbone.parameters():
@@ -278,7 +276,6 @@ class MAMBA_TCM(TemporalContextModule):
         
         self.fc_project = nn.Linear(embed_dim, 30) 
         self.fc_classify = nn.Linear(30 + self.n_features, 5)
-
     def forward(self, x):
         # x shape is (batch, seq_len, n_samples)
         x_embedded = self.apply_backbone(x)
@@ -334,7 +331,46 @@ class Trainer:
                 backbone, pretrained.autoencoder.embed_dim, args.embed_dim
             ).to(device)
         self.tcm = self.model
+        
+        # --- RUNTIME PATCH TO FIX CONV1D INPUT DIMENSION ERROR ---
+        # The traceback shows a conv1d layer received a 4D tensor instead of 3D.
+        # This is caused by an incorrect `torch.unsqueeze` in `FrameBackBone.forward`.
+        # We will replace the forward method of the `frame_backbone` instance
+        # at runtime to correct this behavior without editing the model file.
+
+        # 1. Define the corrected forward method.
+        def corrected_frame_backbone_forward(self_fb, x):
+            """
+            Corrected forward pass for FrameBackBone.
+            `self_fb` refers to the FrameBackBone instance.
+            `x` is the input tensor with shape (batch, num_frames, channels, frame_samples).
+            """
+            latent_seq = []
+            for i in range(x.shape[1]):
+                # The original code was: `sample = torch.unsqueeze(x[:, i, :], dim=1)`
+                # `x[:, i, :]` correctly slices the tensor to (batch, channels, frame_samples).
+                # The `unsqueeze` call incorrectly turned it into (batch, 1, channels, frame_samples).
+                # The fix is to remove the `unsqueeze` call.
+                sample = x[:, i, :]
+                latent = self_fb.model(sample)
+                latent_seq.append(latent)
+            latent_seq = torch.stack(latent_seq, dim=1)
+            latent_seq = self_fb.feature_layer(latent_seq)
+            return latent_seq
+
+        # 2. Find the specific instance of FrameBackBone in the model.
+        # The path is model -> backbone (NeuroNetEncoderWrapper) -> frame_backbone (FrameBackBone)
+        frame_backbone_instance = self.model.backbone.frame_backbone
+
+        # 3. Replace the instance's forward method with our corrected version.
+        if isinstance(frame_backbone_instance, FrameBackBone):
+            frame_backbone_instance.forward = types.MethodType(corrected_frame_backbone_forward, frame_backbone_instance)
+            print("\n--- RUNTIME PATCH APPLIED ---")
+            print("Corrected FrameBackBone.forward to resolve the 4D tensor input error for conv1d.")
+            print("The model will now run with the corrected logic.\n")
+        
         self.criterion = nn.CrossEntropyLoss()
+
     def compute_metrics_binary(self, y_true, y_prob_pos_class, y_pred):
         acc  = accuracy_score(y_true, y_pred)
         f1   = f1_score(y_true, y_pred, average='binary', zero_division=0)
@@ -358,6 +394,7 @@ class Trainer:
             'accuracy': acc, 'f1': f1, 'auc': auc_, 'aupr': aupr,
             'sensitivity': sens, 'specificity': spec, 'confusion_matrix': cm
         }
+
     def evaluate_loader_binary(self, loader):
         self.tcm.eval()
         all_true_binary, all_pred_binary, all_prob_bad_outcome = [], [], []
@@ -376,6 +413,7 @@ class Trainer:
                 all_prob_bad_outcome.extend(prob_bad_outcome.cpu().numpy())
                 
         return self.compute_metrics_binary(np.array(all_true_binary), np.array(all_prob_bad_outcome), np.array(all_pred_binary))
+
     def compute_metrics_cpc(self, y_true, y_prob, y_pred):
         acc  = accuracy_score(y_true, y_pred)
         f1   = f1_score(y_true, y_pred, average='macro', zero_division=0)

@@ -22,7 +22,6 @@ from sklearn.model_selection import KFold
 from tqdm import tqdm
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from pretrained.LMDB_data_loader import LMDBChannelEpochDataset
-
 # --- NEW: Imports for expanded feature extraction ---
 from scipy.stats import skew, kurtosis
 from scipy.signal import welch
@@ -31,7 +30,6 @@ from scipy.signal import welch
 import antropy as ant
 # Import for calculating band power from PSD
 from scipy.integrate import simpson
-
 # --- NEW: Imports for runtime patch ---
 from models.neuronet.resnet1d import FrameBackBone
 import types
@@ -263,6 +261,39 @@ class LSTM_MHA_TCM(TemporalContextModule):
         x = self.trans(x)
         return self.fc(x)
 
+# --- NEW: Attention Pooling Class ---
+# This class implements your idea of using a linear layer to create a weighted
+# summary of all time steps.
+class AttentionPooling(nn.Module):
+    """
+    A module that learns to perform a weighted average over a sequence.
+    """
+    def __init__(self, input_dim):
+        super().__init__()
+        # This linear layer learns to map each time step's features 
+        # to a single "importance" score.
+        self.attention_scorer = nn.Linear(input_dim, 1)
+
+    def forward(self, x):
+        # Input x has shape: (batch_size, seq_len, input_dim)
+        
+        # 1. Calculate importance scores for each time step.
+        # Output `attention_scores` has shape: (batch_size, seq_len, 1)
+        attention_scores = self.attention_scorer(x)
+        
+        # 2. Convert scores to probabilities using softmax. This ensures all
+        # importance weights for a single sequence sum to 1.
+        attention_weights = torch.softmax(attention_scores, dim=1)
+        
+        # 3. Calculate the weighted average by multiplying features by their
+        # learned weights and summing the results over the sequence dimension.
+        context_vector = torch.sum(x * attention_weights, dim=1)
+        
+        # The final output is a single vector per sequence in the batch.
+        # Shape: (batch_size, input_dim)
+        return context_vector
+
+# --- MODIFIED: MAMBA_TCM with Attention Pooling ---
 class MAMBA_TCM(TemporalContextModule):
     def __init__(self, backbone, backbone_final_length, embed_dim, sfreq):
         super().__init__(backbone, backbone_final_length, embed_dim)
@@ -274,14 +305,17 @@ class MAMBA_TCM(TemporalContextModule):
             for _ in range(1)
         ])
         
-        # Project Mamba output to smaller dimension
         self.fc_project = nn.Linear(embed_dim, 30)
-        
-        # Feature extraction projection
         self.feature_project = nn.Linear(self.n_features, 20)
         
-        # Final classifier takes projected Mamba + projected features
-        self.fc_classify = nn.Linear(30 + 20, 5)
+        # The combined feature dimension is 30 + 20 = 50
+        combined_dim = 50
+        
+        # Use the new AttentionPooling layer instead of a simple classifier
+        self.attention_pool = AttentionPooling(input_dim=combined_dim)
+        
+        # The final classifier now takes the single pooled vector as input
+        self.fc_classify = nn.Linear(combined_dim, 5)
         
     def forward(self, x):
         # x shape is (batch, seq_len, n_samples)
@@ -304,9 +338,14 @@ class MAMBA_TCM(TemporalContextModule):
         all_features = torch.stack(all_features, dim=1)  # (batch, seq_len, 21)
         features_projected = self.feature_project(all_features)  # (batch, seq_len, 20)
         
-        # Combine and classify
+        # Combine features from both sources
         combined = torch.cat([mamba_projected, features_projected], dim=-1)  # (batch, seq_len, 50)
-        output = self.fc_classify(combined)  # (batch, seq_len, 5)
+        
+        # Apply attention pooling to get a single summary vector
+        pooled_output = self.attention_pool(combined) # (batch, 50)
+        
+        # Classify the final pooled vector
+        output = self.fc_classify(pooled_output) # (batch, 5)
         
         return output
 
@@ -346,36 +385,17 @@ class Trainer:
         self.tcm = self.model
         
         # --- RUNTIME PATCH TO FIX CONV1D INPUT DIMENSION ERROR ---
-        # The traceback shows a conv1d layer received a 4D tensor instead of 3D.
-        # This is caused by an incorrect `torch.unsqueeze` in `FrameBackBone.forward`.
-        # We will replace the forward method of the `frame_backbone` instance
-        # at runtime to correct this behavior without editing the model file.
-
-        # 1. Define the corrected forward method.
         def corrected_frame_backbone_forward(self_fb, x):
-            """
-            Corrected forward pass for FrameBackBone.
-            `self_fb` refers to the FrameBackBone instance.
-            `x` is the input tensor with shape (batch, num_frames, channels, frame_samples).
-            """
             latent_seq = []
             for i in range(x.shape[1]):
-                # The original code was: `sample = torch.unsqueeze(x[:, i, :], dim=1)`
-                # `x[:, i, :]` correctly slices the tensor to (batch, channels, frame_samples).
-                # The `unsqueeze` call incorrectly turned it into (batch, 1, channels, frame_samples).
-                # The fix is to remove the `unsqueeze` call.
                 sample = x[:, i, :]
                 latent = self_fb.model(sample)
                 latent_seq.append(latent)
             latent_seq = torch.stack(latent_seq, dim=1)
             latent_seq = self_fb.feature_layer(latent_seq)
             return latent_seq
-
-        # 2. Find the specific instance of FrameBackBone in the model.
-        # The path is model -> backbone (NeuroNetEncoderWrapper) -> frame_backbone (FrameBackBone)
+        
         frame_backbone_instance = self.model.backbone.frame_backbone
-
-        # 3. Replace the instance's forward method with our corrected version.
         if isinstance(frame_backbone_instance, FrameBackBone):
             frame_backbone_instance.forward = types.MethodType(corrected_frame_backbone_forward, frame_backbone_instance)
             print("\n--- RUNTIME PATCH APPLIED ---")
@@ -416,7 +436,9 @@ class Trainer:
                 x, y_cpc = x.to(device), y_cpc.to(device)
                 out = self.tcm(x)
                 
-                probs_cpc = torch.softmax(out[:, -1, :], dim=-1)
+                # --- MODIFIED: No longer need to slice the output ---
+                # The output `out` is now already the correct shape (batch, 5)
+                probs_cpc = torch.softmax(out, dim=-1)
                 y_true_binary = (y_cpc >= 3).long()
                 prob_bad_outcome = probs_cpc[:, 3] + probs_cpc[:, 4]
                 y_pred_binary = (prob_bad_outcome > 0.5).long()
@@ -463,7 +485,9 @@ class Trainer:
             for x, y in loader:
                 x, y = x.to(device), y.to(device)
                 out = self.tcm(x)
-                probs = torch.softmax(out[:, -1, :], dim=-1)
+                
+                # --- MODIFIED: No longer need to slice the output ---
+                probs = torch.softmax(out, dim=-1)
                 pred  = probs.argmax(dim=-1)
                 
                 all_true_cpc.extend(y.cpu().numpy())
@@ -513,7 +537,9 @@ class Trainer:
                     x, y = x.to(device), y.to(device)
                     optim.zero_grad()
                     out = self.tcm(x)
-                    loss = self.criterion(out[:, -1, :], y)
+                    
+                    # --- MODIFIED: No longer need to slice the output for loss calculation ---
+                    loss = self.criterion(out, y)
                     loss.backward()
                     optim.step()
                 

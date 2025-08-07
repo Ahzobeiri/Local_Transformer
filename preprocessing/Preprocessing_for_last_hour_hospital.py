@@ -118,7 +118,7 @@ def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
             data_dict = {
                 'sample': sample.astype(np.float32),
                 'outcome': outcome,  # Binary: 0 (Good) or 1 (Poor)
-                'cpc': cpc           # CPC score: integer (1-5)
+                'cpc': cpc,          # CPC score: integer (1-5)
                 'hospital': hospital
             }
 

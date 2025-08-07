@@ -55,6 +55,7 @@ def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
         patient_metadata = load_challenge_data(data_folder, patient_id)
         outcome = get_outcome(patient_metadata)  # Binary: 0 (Good) or 1 (Poor)
         cpc = get_cpc(patient_metadata)          # CPC score: integer (1-5)
+        hospital = get_hospital(patient_metadata)
 
         # Load raw data
         data, channels, sampling_frequency = load_recording_data(recording_location)
@@ -118,7 +119,8 @@ def get_eeg(data_folder, patient_id, db: lmdb.Environment, file_key_list: list):
                 'sample': sample.astype(np.float32),
                 'outcome': outcome,  # Binary: 0 (Good) or 1 (Poor)
                 'cpc': cpc,           # CPC score: integer (1-5)
-                'sid': patient_id
+                'sid': patient_id,
+                'hospital': hospital
             }
 
 

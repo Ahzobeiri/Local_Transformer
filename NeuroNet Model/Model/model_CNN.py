@@ -57,6 +57,9 @@ class NeuroNet(nn.Module):
                  decoder_embed_dim: int, decoder_heads: int, decoder_depths: int,
                  projection_hidden: List, temperature=0.01):
         super().__init__()
+
+        self.channel_processor = ChannelProcessor(in_channels=19)
+                     
         self.fs, self.second = fs, second
         self.time_window = time_window
         self.time_step = time_step
@@ -84,6 +87,9 @@ class NeuroNet(nn.Module):
         self.norm_pix_loss = False
 
     def forward(self, x: torch.Tensor, mask_ratio: float = 0.5) -> (torch.Tensor, torch.Tensor):
+
+        x = self.channel_processor(x)
+        
         x = self.make_frame(x)
         x = self.frame_backbone(x)
 
@@ -303,6 +309,8 @@ class NeuroNetEncoderWrapper(nn.Module):
         self.time_window = time_window
         self.time_step = time_step
 
+        self.channel_processor = channel_processor
+
         self.patch_embed = patch_embed
         self.frame_backbone = frame_backbone
         self.encoder_block = encoder_block
@@ -313,6 +321,9 @@ class NeuroNetEncoderWrapper(nn.Module):
         self.final_length = final_length
 
     def forward(self, x, semantic_token=True):
+
+        x = self.channel_processor(x) # Shape: (B, C, L) -> (B, L)
+        
         # frame backbone
         x = self.make_frame(x)
         x = self.frame_backbone(x)

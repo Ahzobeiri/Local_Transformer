@@ -13,7 +13,7 @@ import torch.optim as opt
 from mamba_ssm import Mamba
 from models.utils import model_size
 from torch.utils.data import Dataset, DataLoader, Subset, WeightedRandomSampler
-from models.neuronet.model import NeuroNet, NeuroNetEncoderWrapper
+from models.neuronet.model_CNN import NeuroNet, NeuroNetEncoderWrapper
 from sklearn.metrics import (
     accuracy_score, f1_score, roc_auc_score,
     precision_recall_curve, auc, confusion_matrix
@@ -22,7 +22,7 @@ from sklearn.preprocessing import label_binarize
 from sklearn.model_selection import KFold
 from tqdm import tqdm
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from pretrained.LMDB_data_loader import LMDBChannelEpochDataset
+from pretrained.data_loader_channels import LMDBChannelEpochDataset
 
 warnings.filterwarnings(action='ignore')
 
